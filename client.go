@@ -1,29 +1,16 @@
 package zkclient
 
 import (
-	"fmt"
 	"path"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/funkygao/go-helix"
 	"github.com/funkygao/go-zookeeper/zk"
 	"github.com/funkygao/golib/sync2"
 	log "github.com/funkygao/log4go"
 	"github.com/yichen/retry"
-)
-
-var (
-	zkRetryOptions = retry.RetryOptions{
-		"zookeeper",          // tag
-		time.Millisecond * 5, // backoff
-		time.Second * 1,      // max backoff
-		1,                    // default backoff constant
-		1,                    // MaxAttempts, 0 means infinite
-		false,                // use V(1) level for log messages
-	}
 )
 
 type client struct {
@@ -52,7 +39,7 @@ func New(zkSvr string, options ...clientOption) *client {
 		panic("invalid zkSvr")
 	}
 
-	conn := &client{
+	c := &client{
 		zkSvr:                zkSvr,
 		chroot:               chroot,
 		servers:              servers,
@@ -61,100 +48,100 @@ func New(zkSvr string, options ...clientOption) *client {
 		acl:                  zk.WorldACL(zk.PermAll),
 		stateChangeListeners: []ZkStateListener{},
 	}
-	conn.isConnected.Set(false)
+	c.isConnected.Set(false)
 
 	for _, option := range options {
-		option(conn)
+		option(c)
 	}
 
-	return conn
+	return c
 }
 
-func (conn *client) Connect() error {
+func (c *client) Connect() error {
 	t1 := time.Now()
-	zkConn, stateEvtCh, err := zk.Connect(conn.servers, conn.sessionTimeout)
+	zkConn, stateEvtCh, err := zk.Connect(c.servers, c.sessionTimeout)
 	if err != nil {
 		return err
 	}
 
-	conn.zkConn = zkConn
-	conn.stateEvtCh = stateEvtCh
+	c.zkConn = zkConn
+	c.stateEvtCh = stateEvtCh
 
-	if conn.chroot != "" {
-		if err := conn.ensurePathExists(conn.chroot); err != nil {
+	if c.chroot != "" {
+		if err := c.ensurePathExists(c.chroot); err != nil {
 			return err
 		}
 	}
 
-	conn.wg.Add(1)
-	go conn.watchStateChanges()
+	c.wg.Add(1)
+	go c.watchStateChanges()
 
 	log.Debug("zk client Connect %s", time.Since(t1))
 
 	return nil
 }
 
-func (conn *client) Disconnect() {
+func (c *client) Disconnect() {
 	t1 := time.Now()
-	if conn.zkConn != nil {
-		conn.zkConn.Close()
+	if c.zkConn != nil {
+		c.zkConn.Close()
 	}
-	close(conn.close)
-	conn.wg.Wait()
-	conn.isConnected.Set(false)
+	close(c.close)
+	c.wg.Wait()
+	c.isConnected.Set(false)
 
 	log.Debug("zk client Disconnect %s", time.Since(t1))
 }
 
 // SubscribeStateChanges MUST be called before Connect as we don't want
 // to labor to handle the thread-safe issue.
-func (conn *client) SubscribeStateChanges(l ZkStateListener) {
-	conn.stateChangeListeners = append(conn.stateChangeListeners, l)
+func (c *client) SubscribeStateChanges(l ZkStateListener) {
+	c.stateChangeListeners = append(c.stateChangeListeners, l)
 }
 
-func (conn *client) watchStateChanges() {
-	defer conn.wg.Done()
+func (c *client) watchStateChanges() {
+	defer c.wg.Done()
 
 	var evt zk.Event
 	for {
 		select {
-		case <-conn.close:
+		case <-c.close:
 			log.Debug("zk client got close signal, stopped ok")
 			return
 
-		case evt = <-conn.stateEvtCh:
+		case evt = <-c.stateEvtCh:
 			// TODO lock? currently, SubscribeStateChanges must called before Connect
 			// what if handler blocks?
-			for _, l := range conn.stateChangeListeners {
+			for _, l := range c.stateChangeListeners {
 				l.HandleStateChanged(evt.State)
 			}
 
 			// extra handler for new session state
 			if evt.State == zk.StateHasSession {
-				conn.isConnected.Set(true)
-				for _, l := range conn.stateChangeListeners {
+				c.isConnected.Set(true)
+				for _, l := range c.stateChangeListeners {
 					l.HandleNewSession()
 				}
 			} else if evt.State != zk.StateUnknown {
-				conn.isConnected.Set(false)
+				c.isConnected.Set(false)
 			}
 		}
 	}
 }
 
-func (conn client) realPath(path string) string {
-	if conn.chroot == "" {
+func (c client) realPath(path string) string {
+	if c.chroot == "" {
 		return path
 	}
 
-	return strings.TrimRight(conn.chroot+path, "/")
+	return strings.TrimRight(c.chroot+path, "/")
 }
 
-func (conn *client) WaitUntilConnected(d time.Duration) (err error) {
+func (c *client) WaitUntilConnected(d time.Duration) (err error) {
 	t1 := time.Now()
 	retries := 0
 	for {
-		if _, _, err = conn.zkConn.Exists("/zookeeper"); err == nil {
+		if _, _, err = c.zkConn.Exists("/zookeeper"); err == nil {
 			break
 		}
 
@@ -166,7 +153,7 @@ func (conn *client) WaitUntilConnected(d time.Duration) (err error) {
 		} else if d > 0 {
 			time.Sleep(d)
 		} else {
-			time.Sleep(conn.sessionTimeout)
+			time.Sleep(c.sessionTimeout)
 		}
 	}
 
@@ -174,55 +161,55 @@ func (conn *client) WaitUntilConnected(d time.Duration) (err error) {
 	return
 }
 
-func (conn *client) IsConnected() bool {
-	return conn != nil && conn.isConnected.Get()
+func (c *client) IsConnected() bool {
+	return c != nil && c.isConnected.Get()
 }
 
-func (conn *client) SessionID() string {
-	return strconv.FormatInt(conn.zkConn.SessionID(), 10)
+func (c *client) SessionID() string {
+	return strconv.FormatInt(c.zkConn.SessionID(), 10)
 }
 
-func (conn *client) CreatePersistentRecord(p string, r Record) error {
+func (c *client) CreatePersistentRecord(p string, r Record) error {
 	parent := path.Dir(p)
-	err := conn.ensurePathExists(conn.realPath(parent))
+	err := c.ensurePathExists(c.realPath(parent))
 	if err != nil {
 		return err
 	}
 
-	return conn.CreatePersistent(p, r.Marshal())
+	return c.CreatePersistent(p, r.Marshal())
 }
 
-func (conn *client) SetRecord(path string, r Record) error {
-	exists, err := conn.Exists(path)
+func (c *client) SetRecord(path string, r Record) error {
+	exists, err := c.Exists(path)
 	if err != nil {
 		return err
 	}
 
 	if !exists {
-		if err = conn.ensurePathExists(conn.realPath(path)); err != nil {
+		if err = c.ensurePathExists(c.realPath(path)); err != nil {
 			return err
 		}
 	}
 
-	if _, err = conn.Get(path); err != nil {
+	if _, err = c.Get(path); err != nil {
 		return err
 	}
 
-	return conn.Set(path, r.Marshal())
+	return c.Set(path, r.Marshal())
 }
 
-func (conn *client) Exists(path string) (bool, error) {
-	if !conn.IsConnected() {
-		return false, helix.ErrNotConnected
+func (c *client) Exists(path string) (bool, error) {
+	if !c.IsConnected() {
+		return false, ErrNotConnected
 	}
 
 	var result bool
 	var stat *zk.Stat
 
 	err := retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
-		r, s, err := conn.zkConn.Exists(conn.realPath(path))
+		r, s, err := c.zkConn.Exists(c.realPath(path))
 		if err != nil {
-			return retry.RetryContinue, conn.wrapZkError(conn.realPath(path), err)
+			return retry.RetryContinue, wrapZkError(c.realPath(path), err)
 		}
 
 		// ok
@@ -231,13 +218,13 @@ func (conn *client) Exists(path string) (bool, error) {
 		return retry.RetryBreak, nil
 	})
 
-	conn.stat = stat
+	c.stat = stat
 	return result, err
 }
 
-func (conn *client) ExistsAll(paths ...string) (bool, error) {
+func (c *client) ExistsAll(paths ...string) (bool, error) {
 	for _, path := range paths {
-		if exists, err := conn.Exists(path); err != nil || exists == false {
+		if exists, err := c.Exists(path); err != nil || exists == false {
 			return exists, err
 		}
 	}
@@ -245,30 +232,30 @@ func (conn *client) ExistsAll(paths ...string) (bool, error) {
 	return true, nil
 }
 
-func (conn *client) Get(path string) ([]byte, error) {
-	if !conn.IsConnected() {
+func (c *client) Get(path string) ([]byte, error) {
+	if !c.IsConnected() {
 		return nil, ErrNotConnected
 	}
 
 	var data []byte
 
 	err := retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
-		d, s, err := conn.zkConn.Get(conn.realPath(path))
+		d, s, err := c.zkConn.Get(c.realPath(path))
 		if err != nil {
-			return retry.RetryContinue, conn.wrapZkError(conn.realPath(path), err)
+			return retry.RetryContinue, wrapZkError(c.realPath(path), err)
 		}
 
 		// ok
 		data = d
-		conn.stat = s
+		c.stat = s
 		return retry.RetryBreak, nil
 	})
 
 	return data, err
 }
 
-func (conn *client) GetW(path string) ([]byte, <-chan zk.Event, error) {
-	if !conn.IsConnected() {
+func (c *client) GetW(path string) ([]byte, <-chan zk.Event, error) {
+	if !c.IsConnected() {
 		return nil, nil, ErrNotConnected
 	}
 
@@ -276,14 +263,14 @@ func (conn *client) GetW(path string) ([]byte, <-chan zk.Event, error) {
 	var events <-chan zk.Event
 
 	err := retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
-		d, s, evts, err := conn.zkConn.GetW(conn.realPath(path))
+		d, s, evts, err := c.zkConn.GetW(c.realPath(path))
 		if err != nil {
-			return retry.RetryContinue, conn.wrapZkError(conn.realPath(path), err)
+			return retry.RetryContinue, wrapZkError(c.realPath(path), err)
 		}
 
 		// ok
 		data = d
-		conn.stat = s
+		c.stat = s
 		events = evts
 		return retry.RetryBreak, nil
 	})
@@ -291,62 +278,62 @@ func (conn *client) GetW(path string) ([]byte, <-chan zk.Event, error) {
 	return data, events, err
 }
 
-func (conn *client) Set(path string, data []byte) error {
-	if !conn.IsConnected() {
+func (c *client) Set(path string, data []byte) error {
+	if !c.IsConnected() {
 		return ErrNotConnected
 	}
 
-	_, err := conn.zkConn.Set(conn.realPath(path), data, conn.stat.Version)
+	_, err := c.zkConn.Set(c.realPath(path), data, c.stat.Version)
 	return err
 }
 
-func (conn *client) Create(path string, data []byte, flags int32, acl []zk.ACL) (string, error) {
-	if !conn.IsConnected() {
+func (c *client) Create(path string, data []byte, flags int32, acl []zk.ACL) (string, error) {
+	if !c.IsConnected() {
 		return "", ErrNotConnected
 	}
 
-	return conn.zkConn.Create(conn.realPath(path), data, flags, acl)
+	return c.zkConn.Create(c.realPath(path), data, flags, acl)
 }
 
-func (conn *client) CreatePersistent(path string, data []byte) error {
+func (c *client) CreatePersistent(path string, data []byte) error {
 	flags := int32(0)
-	_, err := conn.Create(path, data, flags, conn.acl)
+	_, err := c.Create(path, data, flags, c.acl)
 	return err
 }
 
-func (conn *client) CreateEphemeral(path string, data []byte) error {
+func (c *client) CreateEphemeral(path string, data []byte) error {
 	flags := int32(zk.FlagEphemeral)
-	_, err := conn.Create(path, data, flags, conn.acl)
+	_, err := c.Create(path, data, flags, c.acl)
 	return err
 }
 
-func (conn *client) CreateEmptyPersistent(path string) error {
-	return conn.CreatePersistent(path, []byte{})
+func (c *client) CreateEmptyPersistent(path string) error {
+	return c.CreatePersistent(path, []byte{})
 }
 
-func (conn *client) Children(path string) ([]string, error) {
-	if !conn.IsConnected() {
+func (c *client) Children(path string) ([]string, error) {
+	if !c.IsConnected() {
 		return nil, ErrNotConnected
 	}
 
 	var children []string
 	err := retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
-		c, s, err := conn.zkConn.Children(conn.realPath(path))
+		cs, s, err := c.zkConn.Children(c.realPath(path))
 		if err != nil {
-			return retry.RetryContinue, conn.wrapZkError(conn.realPath(path), err)
+			return retry.RetryContinue, wrapZkError(c.realPath(path), err)
 		}
 
 		// ok
-		children = c
-		conn.stat = s
+		children = cs
+		c.stat = s
 		return retry.RetryBreak, nil
 	})
 
 	return children, err
 }
 
-func (conn *client) ChildrenW(path string) ([]string, <-chan zk.Event, error) {
-	if !conn.IsConnected() {
+func (c *client) ChildrenW(path string) ([]string, <-chan zk.Event, error) {
+	if !c.IsConnected() {
 		return nil, nil, ErrNotConnected
 	}
 
@@ -354,12 +341,14 @@ func (conn *client) ChildrenW(path string) ([]string, <-chan zk.Event, error) {
 	var eventChan <-chan zk.Event
 
 	err := retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
-		c, s, evts, err := conn.zkConn.ChildrenW(conn.realPath(path))
+		cs, s, evts, err := c.zkConn.ChildrenW(c.realPath(path))
 		if err != nil {
-			return retry.RetryContinue, conn.wrapZkError(conn.realPath(path), err)
+			return retry.RetryContinue, wrapZkError(c.realPath(path), err)
 		}
-		children = c
-		conn.stat = s
+
+		// ok
+		children = cs
+		c.stat = s
 		eventChan = evts
 		return retry.RetryBreak, nil
 	})
@@ -367,61 +356,57 @@ func (conn *client) ChildrenW(path string) ([]string, <-chan zk.Event, error) {
 	return children, eventChan, err
 }
 
-func (conn *client) Delete(path string) error {
-	return conn.zkConn.Delete(conn.realPath(path), -1)
+func (c *client) Delete(path string) error {
+	return c.zkConn.Delete(c.realPath(path), -1)
 }
 
-func (conn *client) DeleteTree(path string) error {
-	if !conn.IsConnected() {
+func (c *client) DeleteTree(path string) error {
+	if !c.IsConnected() {
 		return ErrNotConnected
 	}
 
-	return conn.deleteTreeRealPath(conn.realPath(path))
+	return c.deleteTreeRealPath(c.realPath(path))
 }
 
-func (conn *client) deleteTreeRealPath(path string) error {
-	if exists, _, err := conn.zkConn.Exists(path); !exists || err != nil {
+func (c *client) deleteTreeRealPath(path string) error {
+	if exists, _, err := c.zkConn.Exists(path); !exists || err != nil {
 		return err
 	}
 
-	children, _, err := conn.zkConn.Children(path)
+	children, _, err := c.zkConn.Children(path)
 	if err != nil {
 		return err
 	}
 
 	if len(children) == 0 {
-		err := conn.zkConn.Delete(path, -1)
+		err := c.zkConn.Delete(path, -1)
 		return err
 	}
 
-	for _, c := range children {
-		p := path + "/" + c
-		e := conn.deleteTreeRealPath(p)
+	for _, child := range children {
+		p := path + "/" + child
+		e := c.deleteTreeRealPath(p)
 		if e != nil {
 			return e
 		}
 	}
 
-	return conn.zkConn.Delete(path, -1)
+	return c.zkConn.Delete(path, -1)
 }
 
-func (conn *client) ensurePathExists(p string) error {
-	if exists, _, _ := conn.zkConn.Exists(p); exists {
+func (c *client) ensurePathExists(p string) error {
+	if exists, _, _ := c.zkConn.Exists(p); exists {
 		return nil
 	}
 
 	parent := path.Dir(p)
-	if exists, _, _ := conn.zkConn.Exists(parent); !exists {
-		if err := conn.ensurePathExists(parent); err != nil {
+	if exists, _, _ := c.zkConn.Exists(parent); !exists {
+		if err := c.ensurePathExists(parent); err != nil {
 			return err
 		}
 	}
 
 	flags := int32(0)
-	conn.zkConn.Create(p, []byte{}, flags, conn.acl)
+	c.zkConn.Create(p, []byte{}, flags, c.acl)
 	return nil
-}
-
-func (conn *client) wrapZkError(path string, err error) error {
-	return fmt.Errorf("%s %v", path, err)
 }
