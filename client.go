@@ -40,6 +40,7 @@ type client struct {
 	zkConn     *zk.Conn
 	stat       *zk.Stat // storage for the lastest zk query stat info FIXME
 	stateEvtCh <-chan zk.Event
+	acl        []zk.ACL
 
 	stateChangeListeners []ZkStateListener
 }
@@ -57,6 +58,7 @@ func New(zkSvr string, options ...clientOption) *client {
 		servers:              servers,
 		close:                make(chan struct{}),
 		sessionTimeout:       time.Second * 30,
+		acl:                  zk.WorldACL(zk.PermAll),
 		stateChangeListeners: []ZkStateListener{},
 	}
 	conn.isConnected.Set(false)
@@ -308,15 +310,13 @@ func (conn *client) Create(path string, data []byte, flags int32, acl []zk.ACL) 
 
 func (conn *client) CreatePersistent(path string, data []byte) error {
 	flags := int32(0)
-	acl := zk.WorldACL(zk.PermAll)
-	_, err := conn.Create(path, data, flags, acl)
+	_, err := conn.Create(path, data, flags, conn.acl)
 	return err
 }
 
 func (conn *client) CreateEphemeral(path string, data []byte) error {
 	flags := int32(zk.FlagEphemeral)
-	acl := zk.WorldACL(zk.PermAll)
-	_, err := conn.Create(path, data, flags, acl)
+	_, err := conn.Create(path, data, flags, conn.acl)
 	return err
 }
 
@@ -418,7 +418,7 @@ func (conn *client) ensurePathExists(p string) error {
 	}
 
 	flags := int32(0)
-	conn.zkConn.Create(p, []byte{}, flags, zk.WorldACL(zk.PermAll))
+	conn.zkConn.Create(p, []byte{}, flags, conn.acl)
 	return nil
 }
 

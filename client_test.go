@@ -62,14 +62,17 @@ func TestConnectionEnsurePath(t *testing.T) {
 	defer conn.Disconnect()
 
 	now := time.Now().Local()
-	cluster := "gohelix_connection_test_" + now.Format("20060102150405")
+	cluster := "connection_test_" + now.Format("20060102150405")
 	p := fmt.Sprintf("/%s/a/b/c", cluster)
 
 	err = conn.ensurePathExists(p)
 	if err != nil {
 		t.Error(err.Error())
 	}
-	defer conn.DeleteTree(p)
+	defer func() {
+		t.Logf("delete tree: %s", p)
+		assert.Equal(t, nil, conn.DeleteTree(p))
+	}()
 
 	exists, err := conn.Exists(p)
 	assert.Equal(t, nil, err)
@@ -80,10 +83,13 @@ func TestConnectionCRUD(t *testing.T) {
 	c := New(testZkSvr)
 	err := c.Connect()
 	assert.Equal(t, nil, err)
+	err = c.WaitUntilConnected(0)
+	assert.Equal(t, nil, err)
 
-	root := "test_zk_connection"
+	root := "/test_zk_connection"
 	defer c.DeleteTree(root)
-	assert.Equal(t, nil, c.CreateEphemeral(root, nil))
+
+	assert.Equal(t, nil, c.CreateEphemeral(root, []byte{}))
 
 	// TODO more test cases
 }
