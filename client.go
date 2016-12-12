@@ -169,35 +169,6 @@ func (c *client) SessionID() string {
 	return strconv.FormatInt(c.zkConn.SessionID(), 10)
 }
 
-func (c *client) CreatePersistentRecord(p string, r Record) error {
-	parent := path.Dir(p)
-	err := c.ensurePathExists(c.realPath(parent))
-	if err != nil {
-		return err
-	}
-
-	return c.CreatePersistent(p, r.Marshal())
-}
-
-func (c *client) SetRecord(path string, r Record) error {
-	exists, err := c.Exists(path)
-	if err != nil {
-		return err
-	}
-
-	if !exists {
-		if err = c.ensurePathExists(c.realPath(path)); err != nil {
-			return err
-		}
-	}
-
-	if _, err = c.Get(path); err != nil {
-		return err
-	}
-
-	return c.Set(path, r.Marshal())
-}
-
 func (c *client) Exists(path string) (bool, error) {
 	if !c.IsConnected() {
 		return false, ErrNotConnected
@@ -301,14 +272,43 @@ func (c *client) CreatePersistent(path string, data []byte) error {
 	return err
 }
 
+func (c *client) CreateEmptyPersistent(path string) error {
+	return c.CreatePersistent(path, []byte{})
+}
+
 func (c *client) CreateEphemeral(path string, data []byte) error {
 	flags := int32(zk.FlagEphemeral)
 	_, err := c.Create(path, data, flags, c.acl)
 	return err
 }
 
-func (c *client) CreateEmptyPersistent(path string) error {
-	return c.CreatePersistent(path, []byte{})
+func (c *client) CreatePersistentRecord(p string, r Record) error {
+	parent := path.Dir(p)
+	err := c.ensurePathExists(c.realPath(parent))
+	if err != nil {
+		return err
+	}
+
+	return c.CreatePersistent(p, r.Marshal())
+}
+
+func (c *client) SetRecord(path string, r Record) error {
+	exists, err := c.Exists(path)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		if err = c.ensurePathExists(c.realPath(path)); err != nil {
+			return err
+		}
+	}
+
+	if _, err = c.Get(path); err != nil {
+		return err
+	}
+
+	return c.Set(path, r.Marshal())
 }
 
 func (c *client) Children(path string) ([]string, error) {
