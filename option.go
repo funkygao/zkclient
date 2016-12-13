@@ -6,16 +6,16 @@ import (
 	"github.com/funkygao/go-zookeeper/zk"
 )
 
-type clientOption func(*client)
+type clientOption func(*Client)
 
 func WithSessionTimeout(sessionTimeout time.Duration) clientOption {
-	return func(c *client) {
+	return func(c *Client) {
 		c.sessionTimeout = sessionTimeout
 	}
 }
 
-func WithAcl(acl []zk.ACL) clientOption {
-	return func(c *client) {
+func WithACL(acl []zk.ACL) clientOption {
+	return func(c *Client) {
 		c.acl = acl
 	}
 }

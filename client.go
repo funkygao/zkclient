@@ -13,7 +13,7 @@ import (
 	"github.com/yichen/retry"
 )
 
-type client struct {
+type Client struct {
 	sync.RWMutex
 
 	zkSvr, chroot  string
@@ -32,14 +32,14 @@ type client struct {
 	stateChangeListeners []ZkStateListener
 }
 
-func New(zkSvr string, options ...clientOption) *client {
+func New(zkSvr string, options ...clientOption) *Client {
 	servers, chroot, err := parseZkConnStr(zkSvr)
 	if err != nil || len(servers) == 0 {
 		// yes, panic!
 		panic("invalid zkSvr")
 	}
 
-	c := &client{
+	c := &Client{
 		zkSvr:                zkSvr,
 		chroot:               chroot,
 		servers:              servers,
@@ -57,7 +57,7 @@ func New(zkSvr string, options ...clientOption) *client {
 	return c
 }
 
-func (c *client) Connect() error {
+func (c *Client) Connect() error {
 	t1 := time.Now()
 	zkConn, stateEvtCh, err := zk.Connect(c.servers, c.sessionTimeout)
 	if err != nil {
@@ -76,12 +76,12 @@ func (c *client) Connect() error {
 	c.wg.Add(1)
 	go c.watchStateChanges()
 
-	log.Debug("zk client Connect %s", time.Since(t1))
+	log.Debug("zk Client Connect %s", time.Since(t1))
 
 	return nil
 }
 
-func (c *client) Disconnect() {
+func (c *Client) Disconnect() {
 	t1 := time.Now()
 	if c.zkConn != nil {
 		c.zkConn.Close()
@@ -90,23 +90,23 @@ func (c *client) Disconnect() {
 	c.wg.Wait()
 	c.isConnected.Set(false)
 
-	log.Debug("zk client Disconnect %s", time.Since(t1))
+	log.Debug("zk Client Disconnect %s", time.Since(t1))
 }
 
 // SubscribeStateChanges MUST be called before Connect as we don't want
 // to labor to handle the thread-safe issue.
-func (c *client) SubscribeStateChanges(l ZkStateListener) {
-	c.stateChangeListeners = append(c.stateChangeListeners, l)
+func (c *Client) SubscribeStateChanges(listener ZkStateListener) {
+	c.stateChangeListeners = append(c.stateChangeListeners, listener)
 }
 
-func (c *client) watchStateChanges() {
+func (c *Client) watchStateChanges() {
 	defer c.wg.Done()
 
 	var evt zk.Event
 	for {
 		select {
 		case <-c.close:
-			log.Debug("zk client got close signal, stopped ok")
+			log.Debug("zk Client got close signal, stopped ok")
 			return
 
 		case evt = <-c.stateEvtCh:
@@ -129,7 +129,7 @@ func (c *client) watchStateChanges() {
 	}
 }
 
-func (c client) realPath(path string) string {
+func (c Client) realPath(path string) string {
 	if c.chroot == "" {
 		return path
 	}
@@ -137,7 +137,7 @@ func (c client) realPath(path string) string {
 	return strings.TrimRight(c.chroot+path, "/")
 }
 
-func (c *client) WaitUntilConnected(d time.Duration) (err error) {
+func (c *Client) WaitUntilConnected(d time.Duration) (err error) {
 	t1 := time.Now()
 	retries := 0
 	for {
@@ -157,19 +157,19 @@ func (c *client) WaitUntilConnected(d time.Duration) (err error) {
 		}
 	}
 
-	log.Debug("zk client WaitUntilConnected %s", time.Since(t1))
+	log.Debug("zk Client WaitUntilConnected %s", time.Since(t1))
 	return
 }
 
-func (c *client) IsConnected() bool {
+func (c *Client) IsConnected() bool {
 	return c != nil && c.isConnected.Get()
 }
 
-func (c *client) SessionID() string {
+func (c *Client) SessionID() string {
 	return strconv.FormatInt(c.zkConn.SessionID(), 10)
 }
 
-func (c *client) Exists(path string) (bool, error) {
+func (c *Client) Exists(path string) (bool, error) {
 	if !c.IsConnected() {
 		return false, ErrNotConnected
 	}
@@ -193,7 +193,7 @@ func (c *client) Exists(path string) (bool, error) {
 	return result, err
 }
 
-func (c *client) ExistsAll(paths ...string) (bool, error) {
+func (c *Client) ExistsAll(paths ...string) (bool, error) {
 	for _, path := range paths {
 		if exists, err := c.Exists(path); err != nil || exists == false {
 			return exists, err
@@ -203,7 +203,7 @@ func (c *client) ExistsAll(paths ...string) (bool, error) {
 	return true, nil
 }
 
-func (c *client) Get(path string) ([]byte, error) {
+func (c *Client) Get(path string) ([]byte, error) {
 	if !c.IsConnected() {
 		return nil, ErrNotConnected
 	}
@@ -225,7 +225,7 @@ func (c *client) Get(path string) ([]byte, error) {
 	return data, err
 }
 
-func (c *client) GetW(path string) ([]byte, <-chan zk.Event, error) {
+func (c *Client) GetW(path string) ([]byte, <-chan zk.Event, error) {
 	if !c.IsConnected() {
 		return nil, nil, ErrNotConnected
 	}
@@ -249,7 +249,7 @@ func (c *client) GetW(path string) ([]byte, <-chan zk.Event, error) {
 	return data, events, err
 }
 
-func (c *client) Set(path string, data []byte) error {
+func (c *Client) Set(path string, data []byte) error {
 	if !c.IsConnected() {
 		return ErrNotConnected
 	}
@@ -258,7 +258,7 @@ func (c *client) Set(path string, data []byte) error {
 	return err
 }
 
-func (c *client) Create(path string, data []byte, flags int32, acl []zk.ACL) (string, error) {
+func (c *Client) Create(path string, data []byte, flags int32, acl []zk.ACL) (string, error) {
 	if !c.IsConnected() {
 		return "", ErrNotConnected
 	}
@@ -266,23 +266,23 @@ func (c *client) Create(path string, data []byte, flags int32, acl []zk.ACL) (st
 	return c.zkConn.Create(c.realPath(path), data, flags, acl)
 }
 
-func (c *client) CreatePersistent(path string, data []byte) error {
+func (c *Client) CreatePersistent(path string, data []byte) error {
 	flags := int32(0)
 	_, err := c.Create(path, data, flags, c.acl)
 	return err
 }
 
-func (c *client) CreateEmptyPersistent(path string) error {
+func (c *Client) CreateEmptyPersistent(path string) error {
 	return c.CreatePersistent(path, []byte{})
 }
 
-func (c *client) CreateEphemeral(path string, data []byte) error {
+func (c *Client) CreateEphemeral(path string, data []byte) error {
 	flags := int32(zk.FlagEphemeral)
 	_, err := c.Create(path, data, flags, c.acl)
 	return err
 }
 
-func (c *client) CreatePersistentRecord(p string, r Record) error {
+func (c *Client) CreatePersistentRecord(p string, r Record) error {
 	parent := path.Dir(p)
 	err := c.ensurePathExists(c.realPath(parent))
 	if err != nil {
@@ -292,7 +292,7 @@ func (c *client) CreatePersistentRecord(p string, r Record) error {
 	return c.CreatePersistent(p, r.Marshal())
 }
 
-func (c *client) SetRecord(path string, r Record) error {
+func (c *Client) SetRecord(path string, r Record) error {
 	exists, err := c.Exists(path)
 	if err != nil {
 		return err
@@ -311,7 +311,7 @@ func (c *client) SetRecord(path string, r Record) error {
 	return c.Set(path, r.Marshal())
 }
 
-func (c *client) Children(path string) ([]string, error) {
+func (c *Client) Children(path string) ([]string, error) {
 	if !c.IsConnected() {
 		return nil, ErrNotConnected
 	}
@@ -332,7 +332,7 @@ func (c *client) Children(path string) ([]string, error) {
 	return children, err
 }
 
-func (c *client) ChildrenW(path string) ([]string, <-chan zk.Event, error) {
+func (c *Client) ChildrenW(path string) ([]string, <-chan zk.Event, error) {
 	if !c.IsConnected() {
 		return nil, nil, ErrNotConnected
 	}
@@ -356,11 +356,11 @@ func (c *client) ChildrenW(path string) ([]string, <-chan zk.Event, error) {
 	return children, eventChan, err
 }
 
-func (c *client) Delete(path string) error {
+func (c *Client) Delete(path string) error {
 	return c.zkConn.Delete(c.realPath(path), -1)
 }
 
-func (c *client) DeleteTree(path string) error {
+func (c *Client) DeleteTree(path string) error {
 	if !c.IsConnected() {
 		return ErrNotConnected
 	}
@@ -368,7 +368,7 @@ func (c *client) DeleteTree(path string) error {
 	return c.deleteTreeRealPath(c.realPath(path))
 }
 
-func (c *client) deleteTreeRealPath(path string) error {
+func (c *Client) deleteTreeRealPath(path string) error {
 	if exists, _, err := c.zkConn.Exists(path); !exists || err != nil {
 		return err
 	}
@@ -394,7 +394,7 @@ func (c *client) deleteTreeRealPath(path string) error {
 	return c.zkConn.Delete(path, -1)
 }
 
-func (c *client) ensurePathExists(p string) error {
+func (c *Client) ensurePathExists(p string) error {
 	if exists, _, _ := c.zkConn.Exists(p); exists {
 		return nil
 	}
