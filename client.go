@@ -32,6 +32,7 @@ type Client struct {
 	stateChangeListeners []ZkStateListener
 }
 
+// New will create a zookeeper Client.
 func New(zkSvr string, options ...clientOption) *Client {
 	servers, chroot, err := parseZkConnStr(zkSvr)
 	if err != nil || len(servers) == 0 {
@@ -57,6 +58,7 @@ func New(zkSvr string, options ...clientOption) *Client {
 	return c
 }
 
+// Connect will connect to zookeeper ensemble.
 func (c *Client) Connect() error {
 	t1 := time.Now()
 	zkConn, stateEvtCh, err := zk.Connect(c.servers, c.sessionTimeout)
@@ -81,6 +83,7 @@ func (c *Client) Connect() error {
 	return nil
 }
 
+// Disconnect will disconnect from the zookeeper ensemble and release related resources.
 func (c *Client) Disconnect() {
 	t1 := time.Now()
 	if c.zkConn != nil {
@@ -137,6 +140,13 @@ func (c Client) realPath(path string) string {
 	return strings.TrimRight(c.chroot+path, "/")
 }
 
+// LastStat returns last read operation(Exists/Get/GetW/Children/ChildrenW) zk stat result.
+func (c *Client) LastStat() *zk.Stat {
+	return c.stat
+}
+
+// WaitUntilConnected will block till zookeeper ensemble is really connected.
+// If arg d is 0, means infinite timeout.
 func (c *Client) WaitUntilConnected(d time.Duration) (err error) {
 	t1 := time.Now()
 	retries := 0
