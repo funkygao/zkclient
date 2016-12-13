@@ -8,7 +8,7 @@ import (
 
 var (
 	zkRetryOptions = retry.RetryOptions{
-		"zookeeper",          // tag
+		"zkutil",             // tag
 		time.Millisecond * 5, // backoff
 		time.Second * 1,      // max backoff
 		1,                    // default backoff constant
