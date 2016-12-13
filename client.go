@@ -105,6 +105,15 @@ func (c Client) SessionTimeout() time.Duration {
 	return c.sessionTimeout
 }
 
+func (c *Client) SetSessionTimeout(t time.Duration) error {
+	if c.IsConnected() {
+		return ErrNotAllowed
+	}
+
+	c.sessionTimeout = t
+	return nil
+}
+
 // SubscribeStateChanges MUST be called before Connect as we don't want
 // to labor to handle the thread-safe issue.
 func (c *Client) SubscribeStateChanges(listener ZkStateListener) {
