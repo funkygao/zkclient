@@ -33,7 +33,7 @@ type Client struct {
 }
 
 // New will create a zookeeper Client.
-func New(zkSvr string, options ...clientOption) *Client {
+func New(zkSvr string, options ...Option) *Client {
 	servers, chroot, err := parseZkConnStr(zkSvr)
 	if err != nil || len(servers) == 0 {
 		// yes, panic!
@@ -94,6 +94,15 @@ func (c *Client) Disconnect() {
 	c.isConnected.Set(false)
 
 	log.Debug("zk Client Disconnect %s", time.Since(t1))
+}
+
+// ZkSvr returns the raw zookeeper servers connection string.
+func (c Client) ZkSvr() string {
+	return c.zkSvr
+}
+
+func (c Client) SessionTimeout() time.Duration {
+	return c.sessionTimeout
 }
 
 // SubscribeStateChanges MUST be called before Connect as we don't want
