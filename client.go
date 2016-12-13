@@ -19,6 +19,7 @@ type Client struct {
 	zkSvr, chroot  string
 	servers        []string
 	sessionTimeout time.Duration
+	withRetry      bool
 
 	isConnected sync2.AtomicBool
 	close       chan struct{}
@@ -46,6 +47,7 @@ func New(zkSvr string, options ...Option) *Client {
 		servers:              servers,
 		close:                make(chan struct{}),
 		sessionTimeout:       time.Second * 30,
+		withRetry:            false, // without retry by default
 		acl:                  zk.WorldACL(zk.PermAll),
 		stateChangeListeners: []ZkStateListener{},
 	}
@@ -197,28 +199,25 @@ func (c *Client) SessionID() string {
 	return strconv.FormatInt(c.zkConn.SessionID(), 10)
 }
 
-func (c *Client) Exists(path string) (bool, error) {
+func (c *Client) Exists(path string) (result bool, err error) {
 	if !c.IsConnected() {
 		return false, ErrNotConnected
 	}
 
-	var result bool
-	var stat *zk.Stat
+	if c.withRetry {
+		err = retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
+			result, c.stat, err = c.zkConn.Exists(c.realPath(path))
+			if err != nil {
+				return retry.RetryContinue, wrapZkError(c.realPath(path), err)
+			}
 
-	err := retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
-		r, s, err := c.zkConn.Exists(c.realPath(path))
-		if err != nil {
-			return retry.RetryContinue, wrapZkError(c.realPath(path), err)
-		}
+			return retry.RetryBreak, nil
+		})
+	} else {
+		result, c.stat, err = c.zkConn.Exists(c.realPath(path))
+	}
 
-		// ok
-		result = r
-		stat = s
-		return retry.RetryBreak, nil
-	})
-
-	c.stat = stat
-	return result, err
+	return
 }
 
 func (c *Client) ExistsAll(paths ...string) (bool, error) {
@@ -231,50 +230,42 @@ func (c *Client) ExistsAll(paths ...string) (bool, error) {
 	return true, nil
 }
 
-func (c *Client) Get(path string) ([]byte, error) {
-	if !c.IsConnected() {
-		return nil, ErrNotConnected
+func (c *Client) Get(path string) (data []byte, err error) {
+	if c.withRetry {
+		err = retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
+			data, c.stat, err = c.zkConn.Get(c.realPath(path))
+			if err != nil {
+				return retry.RetryContinue, wrapZkError(c.realPath(path), err)
+			}
+
+			return retry.RetryBreak, nil
+		})
+	} else {
+		data, c.stat, err = c.zkConn.Get(c.realPath(path))
 	}
 
-	var data []byte
-
-	err := retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
-		d, s, err := c.zkConn.Get(c.realPath(path))
-		if err != nil {
-			return retry.RetryContinue, wrapZkError(c.realPath(path), err)
-		}
-
-		// ok
-		data = d
-		c.stat = s
-		return retry.RetryBreak, nil
-	})
-
-	return data, err
+	return
 }
 
-func (c *Client) GetW(path string) ([]byte, <-chan zk.Event, error) {
+func (c *Client) GetW(path string) (data []byte, events <-chan zk.Event, err error) {
 	if !c.IsConnected() {
 		return nil, nil, ErrNotConnected
 	}
 
-	var data []byte
-	var events <-chan zk.Event
+	if c.withRetry {
+		err = retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
+			data, c.stat, events, err = c.zkConn.GetW(c.realPath(path))
+			if err != nil {
+				return retry.RetryContinue, wrapZkError(c.realPath(path), err)
+			}
 
-	err := retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
-		d, s, evts, err := c.zkConn.GetW(c.realPath(path))
-		if err != nil {
-			return retry.RetryContinue, wrapZkError(c.realPath(path), err)
-		}
+			return retry.RetryBreak, nil
+		})
+	} else {
+		data, c.stat, events, err = c.zkConn.GetW(c.realPath(path))
+	}
 
-		// ok
-		data = d
-		c.stat = s
-		events = evts
-		return retry.RetryBreak, nil
-	})
-
-	return data, events, err
+	return
 }
 
 func (c *Client) Set(path string, data []byte) error {
@@ -339,49 +330,38 @@ func (c *Client) SetRecord(path string, r Record) error {
 	return c.Set(path, r.Marshal())
 }
 
-func (c *Client) Children(path string) ([]string, error) {
-	if !c.IsConnected() {
-		return nil, ErrNotConnected
+func (c *Client) Children(path string) (children []string, err error) {
+	if c.withRetry {
+		err = retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
+			children, c.stat, err = c.zkConn.Children(c.realPath(path))
+			if err != nil {
+				return retry.RetryContinue, wrapZkError(c.realPath(path), err)
+			}
+
+			return retry.RetryBreak, nil
+		})
+	} else {
+		children, c.stat, err = c.zkConn.Children(c.realPath(path))
 	}
 
-	var children []string
-	err := retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
-		cs, s, err := c.zkConn.Children(c.realPath(path))
-		if err != nil {
-			return retry.RetryContinue, wrapZkError(c.realPath(path), err)
-		}
-
-		// ok
-		children = cs
-		c.stat = s
-		return retry.RetryBreak, nil
-	})
-
-	return children, err
+	return
 }
 
-func (c *Client) ChildrenW(path string) ([]string, <-chan zk.Event, error) {
-	if !c.IsConnected() {
-		return nil, nil, ErrNotConnected
+func (c *Client) ChildrenW(path string) (children []string, eventChan <-chan zk.Event, err error) {
+	if c.withRetry {
+		err = retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
+			children, c.stat, eventChan, err = c.zkConn.ChildrenW(c.realPath(path))
+			if err != nil {
+				return retry.RetryContinue, wrapZkError(c.realPath(path), err)
+			}
+
+			return retry.RetryBreak, nil
+		})
+	} else {
+		children, c.stat, eventChan, err = c.zkConn.ChildrenW(c.realPath(path))
 	}
 
-	var children []string
-	var eventChan <-chan zk.Event
-
-	err := retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
-		cs, s, evts, err := c.zkConn.ChildrenW(c.realPath(path))
-		if err != nil {
-			return retry.RetryContinue, wrapZkError(c.realPath(path), err)
-		}
-
-		// ok
-		children = cs
-		c.stat = s
-		eventChan = evts
-		return retry.RetryBreak, nil
-	})
-
-	return children, eventChan, err
+	return
 }
 
 func (c *Client) Delete(path string) error {
