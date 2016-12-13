@@ -99,11 +99,11 @@ func (c *Client) Disconnect() {
 }
 
 // ZkSvr returns the raw zookeeper servers connection string.
-func (c Client) ZkSvr() string {
+func (c *Client) ZkSvr() string {
 	return c.zkSvr
 }
 
-func (c Client) SessionTimeout() time.Duration {
+func (c *Client) SessionTimeout() time.Duration {
 	return c.sessionTimeout
 }
 
@@ -152,7 +152,7 @@ func (c *Client) watchStateChanges() {
 	}
 }
 
-func (c Client) realPath(path string) string {
+func (c *Client) realPath(path string) string {
 	if c.chroot == "" {
 		return path
 	}

@@ -2,16 +2,24 @@ package zkclient
 
 import (
 	"fmt"
+	"io/ioutil"
+	"log"
 	"testing"
 	"time"
 
 	"github.com/funkygao/assert"
 	"github.com/funkygao/go-zookeeper/zk"
+	glog "github.com/funkygao/log4go"
 )
 
 var (
 	testZkSvr = "localhost:2181"
 )
+
+func init() {
+	log.SetOutput(ioutil.Discard)
+	glog.Disable()
+}
 
 type dummyStateListener struct {
 	t *testing.T

@@ -8,11 +8,11 @@ import (
 
 var (
 	zkRetryOptions = retry.RetryOptions{
-		"zkutil",             // tag
-		time.Millisecond * 5, // backoff
-		time.Second * 1,      // max backoff
-		1,                    // default backoff constant
-		1,                    // MaxAttempts, 0 means infinite
-		false,                // use V(1) level for log messages
+		Tag:         "zkutil",
+		Backoff:     time.Millisecond * 5,
+		MaxBackoff:  time.Second * 1,
+		Constant:    1,
+		MaxAttempts: 1,
+		UseV1Info:   false,
 	}
 )
