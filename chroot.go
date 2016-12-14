@@ -1,24 +1,24 @@
 package zkclient
 
 import (
+	"path"
 	"strings"
 )
 
-func parseZkConnStr(connStr string) (servers []string, chroot string, err error) {
-	offset := strings.Index(connStr, "/")
-	if offset == -1 {
+func parseZkConnStr(zkConnStr string) (servers []string, chroot string, err error) {
+	firstSlashOffset := strings.Index(zkConnStr, "/")
+	if firstSlashOffset == -1 {
 		// no chroot
-		servers = strings.Split(connStr, ",")
+		servers = strings.Split(zkConnStr, ",")
 		return
 	}
 
-	chrootPath := connStr[offset:len(connStr)]
+	chrootPath := zkConnStr[firstSlashOffset:]
 	if len(chrootPath) > 1 {
-		chroot = strings.TrimRight(chrootPath, "/")
-		// validate path TODO
+		chroot = path.Clean(strings.TrimSpace(chrootPath))
+		// validate path and return err TODO
 	}
-	connStr = connStr[:offset]
-	servers = strings.Split(connStr, ",")
+	servers = strings.Split(zkConnStr[:firstSlashOffset], ",")
 
 	return
 }

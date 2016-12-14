@@ -19,6 +19,11 @@ func TestZkParseConnStr(t *testing.T) {
 		},
 
 		assert.Fixture{
+			Expected: "/helix/root",
+			Input:    "127.0.0.1:2181,127.1.1.1:2191/helix/root/       ",
+		},
+
+		assert.Fixture{
 			Expected: "",
 			Input:    "127.0.0.1:2181,127.1.1.1:2191",
 		},
