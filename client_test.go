@@ -70,21 +70,25 @@ func TestConnectionEnsurePath(t *testing.T) {
 	defer conn.Disconnect()
 
 	now := time.Now().Local()
-	cluster := "connection_test_" + now.Format("20060102150405")
+	cluster := "zkclient_test_" + now.Format("20060102150405")
 	p := fmt.Sprintf("/%s/a/b/c", cluster)
 
 	err = conn.ensurePathExists(p)
 	if err != nil {
 		t.Error(err.Error())
 	}
-	defer func() {
-		t.Logf("delete tree: %s", p)
-		assert.Equal(t, nil, conn.DeleteTree(p))
-	}()
 
 	exists, err := conn.Exists(p)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, true, exists)
+
+	root := "/" + cluster
+	t.Logf("delete tree: %s", root)
+	assert.Equal(t, nil, conn.DeleteTree(root))
+
+	exists, err = conn.Exists(root)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, false, exists)
 }
 
 func TestConnectionCRUD(t *testing.T) {

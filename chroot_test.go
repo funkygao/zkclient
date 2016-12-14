@@ -9,6 +9,16 @@ import (
 func TestZkParseConnStr(t *testing.T) {
 	fixtures := assert.Fixtures{
 		assert.Fixture{
+			Expected: "/helix/root",
+			Input:    "127.0.0.1:2181,127.1.1.1:2191/helix/root",
+		},
+
+		assert.Fixture{
+			Expected: "/helix/root",
+			Input:    "127.0.0.1:2181,127.1.1.1:2191/helix/root/",
+		},
+
+		assert.Fixture{
 			Expected: "",
 			Input:    "127.0.0.1:2181,127.1.1.1:2191",
 		},
@@ -29,6 +39,7 @@ func TestZkParseConnStr(t *testing.T) {
 		assert.Equal(t, f.Expected.(string), chroot)
 		assert.Equal(t, nil, err)
 		assert.Equal(t, true, len(servers) > 0)
+		t.Logf("%+v", servers)
 	}
 
 }
