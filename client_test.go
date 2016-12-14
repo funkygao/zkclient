@@ -39,10 +39,22 @@ func TestConnectionWithChroot(t *testing.T) {
 	t.SkipNow() // TODO
 }
 
+func TestRealPath(t *testing.T) {
+	c := New(testZkSvr)
+	c.chroot = "/abc/efg"
+	assert.Equal(t, "/abc/efg/mm", c.realPath("/mm"))
+}
+
 func TestConnectionWaitUntil(t *testing.T) {
 	c := New(testZkSvr)
+	c.SetSessionTimeout(time.Second * 41)
 	err := c.Connect()
 	assert.Equal(t, nil, err)
+	assert.Equal(t, testZkSvr, c.ZkSvr())
+	assert.Equal(t, time.Second*41, c.SessionTimeout())
+	assert.Equal(t, nil, c.WaitUntilConnected(0))
+	assert.Equal(t, ErrNotAllowed, c.SetSessionTimeout(time.Second))
+	assert.Equal(t, time.Second*41, c.SessionTimeout())
 
 	t1 := time.Now()
 	err = c.WaitUntilConnected(0)

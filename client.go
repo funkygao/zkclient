@@ -35,6 +35,8 @@ type Client struct {
 	stateChangeListeners []ZkStateListener
 }
 
+var defaultSessionTimeout = time.Second * 30
+
 // New will create a zookeeper Client.
 func New(zkSvr string, options ...Option) *Client {
 	servers, chroot, err := parseZkConnStr(zkSvr)
@@ -48,7 +50,7 @@ func New(zkSvr string, options ...Option) *Client {
 		chroot:               chroot,
 		servers:              servers,
 		close:                make(chan struct{}),
-		sessionTimeout:       time.Second * 30,
+		sessionTimeout:       defaultSessionTimeout,
 		withRetry:            false, // without retry by default
 		acl:                  zk.WorldACL(zk.PermAll),
 		wrapErrorWithPath:    false,
