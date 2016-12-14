@@ -1,5 +1,5 @@
 package zkclient
 
-type Record interface {
+type Marshaller interface {
 	Marshal() []byte
 }

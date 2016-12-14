@@ -301,7 +301,7 @@ func (c *Client) CreateEphemeral(path string, data []byte) error {
 	return err
 }
 
-func (c *Client) CreatePersistentRecord(p string, r Record) error {
+func (c *Client) CreatePersistentRecord(p string, r Marshaller) error {
 	parent := path.Dir(p)
 	err := c.ensurePathExists(c.realPath(parent))
 	if err != nil {
@@ -311,7 +311,7 @@ func (c *Client) CreatePersistentRecord(p string, r Record) error {
 	return c.CreatePersistent(p, r.Marshal())
 }
 
-func (c *Client) SetRecord(path string, r Record) error {
+func (c *Client) SetRecord(path string, r Marshaller) error {
 	exists, err := c.Exists(path)
 	if err != nil {
 		return err
