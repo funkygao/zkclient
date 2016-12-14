@@ -1,6 +1,7 @@
 package zkclient
 
 import (
+	"fmt"
 	"path"
 	"strconv"
 	"strings"
@@ -16,10 +17,11 @@ import (
 type Client struct {
 	sync.RWMutex
 
-	zkSvr, chroot  string
-	servers        []string
-	sessionTimeout time.Duration
-	withRetry      bool
+	zkSvr, chroot     string
+	servers           []string
+	sessionTimeout    time.Duration
+	withRetry         bool
+	wrapErrorWithPath bool
 
 	isConnected sync2.AtomicBool
 	close       chan struct{}
@@ -49,6 +51,7 @@ func New(zkSvr string, options ...Option) *Client {
 		sessionTimeout:       time.Second * 30,
 		withRetry:            false, // without retry by default
 		acl:                  zk.WorldACL(zk.PermAll),
+		wrapErrorWithPath:    false,
 		stateChangeListeners: []ZkStateListener{},
 	}
 	c.isConnected.Set(false)
@@ -208,7 +211,7 @@ func (c *Client) Exists(path string) (result bool, err error) {
 		err = retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
 			result, c.stat, err = c.zkConn.Exists(c.realPath(path))
 			if err != nil {
-				return retry.RetryContinue, wrapZkError(c.realPath(path), err)
+				return retry.RetryContinue, c.wrapZkError(path, err)
 			}
 
 			return retry.RetryBreak, nil
@@ -235,7 +238,7 @@ func (c *Client) Get(path string) (data []byte, err error) {
 		err = retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
 			data, c.stat, err = c.zkConn.Get(c.realPath(path))
 			if err != nil {
-				return retry.RetryContinue, wrapZkError(c.realPath(path), err)
+				return retry.RetryContinue, c.wrapZkError(path, err)
 			}
 
 			return retry.RetryBreak, nil
@@ -256,7 +259,7 @@ func (c *Client) GetW(path string) (data []byte, events <-chan zk.Event, err err
 		err = retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
 			data, c.stat, events, err = c.zkConn.GetW(c.realPath(path))
 			if err != nil {
-				return retry.RetryContinue, wrapZkError(c.realPath(path), err)
+				return retry.RetryContinue, c.wrapZkError(path, err)
 			}
 
 			return retry.RetryBreak, nil
@@ -335,7 +338,7 @@ func (c *Client) Children(path string) (children []string, err error) {
 		err = retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
 			children, c.stat, err = c.zkConn.Children(c.realPath(path))
 			if err != nil {
-				return retry.RetryContinue, wrapZkError(c.realPath(path), err)
+				return retry.RetryContinue, c.wrapZkError(path, err)
 			}
 
 			return retry.RetryBreak, nil
@@ -352,7 +355,7 @@ func (c *Client) ChildrenW(path string) (children []string, eventChan <-chan zk.
 		err = retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
 			children, c.stat, eventChan, err = c.zkConn.ChildrenW(c.realPath(path))
 			if err != nil {
-				return retry.RetryContinue, wrapZkError(c.realPath(path), err)
+				return retry.RetryContinue, c.wrapZkError(path, err)
 			}
 
 			return retry.RetryBreak, nil
@@ -417,4 +420,12 @@ func (c *Client) ensurePathExists(p string) error {
 	flags := int32(0)
 	c.zkConn.Create(p, []byte{}, flags, c.acl)
 	return nil
+}
+
+func (c *Client) wrapZkError(path string, err error) error {
+	if !c.wrapErrorWithPath {
+		return err
+	}
+
+	return fmt.Errorf("%s %v", c.realPath(path), err)
 }

@@ -14,6 +14,12 @@ func WithSessionTimeout(sessionTimeout time.Duration) Option {
 	}
 }
 
+func WithWrapErrorWithPath() Option {
+	return func(c *Client) {
+		c.wrapErrorWithPath = true
+	}
+}
+
 func WithACL(acl []zk.ACL) Option {
 	return func(c *Client) {
 		c.acl = acl
