@@ -49,7 +49,6 @@ func New(zkSvr string, options ...Option) *Client {
 		zkSvr:                zkSvr,
 		chroot:               chroot,
 		servers:              servers,
-		close:                make(chan struct{}),
 		sessionTimeout:       defaultSessionTimeout,
 		withRetry:            false, // without retry by default
 		acl:                  zk.WorldACL(zk.PermAll),
@@ -68,11 +67,13 @@ func New(zkSvr string, options ...Option) *Client {
 // Connect will connect to zookeeper ensemble.
 func (c *Client) Connect() error {
 	t1 := time.Now()
+
 	zkConn, stateEvtCh, err := zk.Connect(c.servers, c.sessionTimeout)
 	if err != nil {
 		return err
 	}
 
+	c.close = make(chan struct{})
 	c.zkConn = zkConn
 	c.stateEvtCh = stateEvtCh
 
@@ -93,11 +94,15 @@ func (c *Client) Connect() error {
 // Disconnect will disconnect from the zookeeper ensemble and release related resources.
 func (c *Client) Disconnect() {
 	t1 := time.Now()
+
 	if c.zkConn != nil {
 		c.zkConn.Close()
 	}
 	close(c.close)
 	c.wg.Wait()
+
+	c.zkConn = nil
+	c.stat = nil
 	c.isConnected.Set(false)
 
 	log.Debug("zk Client Disconnect %s", time.Since(t1))
