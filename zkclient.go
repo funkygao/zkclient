@@ -23,16 +23,26 @@ type Client struct {
 	withRetry         bool
 	wrapErrorWithPath bool
 
-	isConnected sync2.AtomicBool
-	close       chan struct{}
-	wg          sync.WaitGroup
+	isConnected   sync2.AtomicBool
+	connectCalled chan struct{}
+	close         chan struct{}
+	wg            sync.WaitGroup
 
 	zkConn     *zk.Conn
 	stat       *zk.Stat // storage for the lastest zk query stat info FIXME
 	stateEvtCh <-chan zk.Event
 	acl        []zk.ACL
 
+	lisenterErrCh chan error
+
+	stateLock            sync.RWMutex
 	stateChangeListeners []ZkStateListener
+
+	childLock            sync.RWMutex
+	childChangeListeners map[string][]ZkChildListener
+
+	dataLock            sync.RWMutex
+	dataChangeListeners map[string][]ZkDataListener
 }
 
 var defaultSessionTimeout = time.Second * 30
@@ -54,6 +64,10 @@ func New(zkSvr string, options ...Option) *Client {
 		acl:                  zk.WorldACL(zk.PermAll),
 		wrapErrorWithPath:    false,
 		stateChangeListeners: []ZkStateListener{},
+		childChangeListeners: map[string][]ZkChildListener{},
+		dataChangeListeners:  map[string][]ZkDataListener{},
+		lisenterErrCh:        make(chan error, 1<<8),
+		connectCalled:        make(chan struct{}),
 	}
 	c.isConnected.Set(false)
 
@@ -73,6 +87,7 @@ func (c *Client) Connect() error {
 		return err
 	}
 
+	close(c.connectCalled)
 	c.close = make(chan struct{})
 	c.zkConn = zkConn
 	c.stateEvtCh = stateEvtCh
@@ -84,9 +99,9 @@ func (c *Client) Connect() error {
 	}
 
 	c.wg.Add(1)
-	go c.watchStateChanges()
+	go c.watchStateChanges() // TODO move to subscribe func
 
-	log.Debug("zk Client Connect %s", time.Since(t1))
+	log.Debug("zkClient Connect %s", time.Since(t1))
 
 	return nil
 }
@@ -105,7 +120,7 @@ func (c *Client) Disconnect() {
 	c.stat = nil
 	c.isConnected.Set(false)
 
-	log.Debug("zk Client Disconnect %s", time.Since(t1))
+	log.Debug("zkClient Disconnect %s", time.Since(t1))
 }
 
 // ZkSvr returns the raw zookeeper servers connection string.
@@ -129,37 +144,226 @@ func (c *Client) SetSessionTimeout(t time.Duration) error {
 // SubscribeStateChanges MUST be called before Connect as we don't want
 // to labor to handle the thread-safe issue.
 func (c *Client) SubscribeStateChanges(listener ZkStateListener) {
+	c.stateLock.Lock()
 	c.stateChangeListeners = append(c.stateChangeListeners, listener)
+	c.stateLock.Unlock()
 }
 
 func (c *Client) watchStateChanges() {
 	defer c.wg.Done()
 
-	var evt zk.Event
+	var (
+		evt   zk.Event
+		err   error
+		loops int
+	)
 	for {
+		loops++
+
 		select {
 		case <-c.close:
-			log.Debug("zk Client got close signal, stopped ok")
+			log.Debug("#%d got close signal, quit", loops)
 			return
 
 		case evt = <-c.stateEvtCh:
-			// TODO lock? currently, SubscribeStateChanges must called before Connect
-			// what if handler blocks?
+			// TODO what if handler blocks?
+			c.stateLock.Lock()
 			for _, l := range c.stateChangeListeners {
-				l.HandleStateChanged(evt.State)
+				if err = l.HandleStateChanged(evt.State); err != nil {
+					log.Error("#%d %v", loops, err)
+				}
 			}
 
 			// extra handler for new session state
 			if evt.State == zk.StateHasSession {
 				c.isConnected.Set(true)
 				for _, l := range c.stateChangeListeners {
-					l.HandleNewSession()
+					if err = l.HandleNewSession(); err != nil {
+						log.Error("#%d %v", loops, err)
+					}
 				}
 			} else if evt.State != zk.StateUnknown {
 				c.isConnected.Set(false)
 			}
+			c.stateLock.Unlock()
 		}
 	}
+}
+
+func (c *Client) SubscribeChildChanges(path string, listener ZkChildListener) {
+	c.childLock.Lock()
+	startWatch := false
+	if _, present := c.childChangeListeners[path]; !present {
+		c.childChangeListeners[path] = []ZkChildListener{}
+		startWatch = true
+	}
+	c.childChangeListeners[path] = append(c.childChangeListeners[path], listener)
+	c.childLock.Unlock()
+
+	if startWatch {
+		c.wg.Add(1)
+		go c.watchChildChanges(path)
+	}
+}
+
+// TODO
+func (c *Client) UnsubscribeChildChanges(path string, listener ZkChildListener) {
+	c.childLock.Lock()
+	c.childLock.Unlock()
+}
+
+func (c *Client) fireListenerError(err error) {
+	select {
+	case c.lisenterErrCh <- err:
+	default:
+		// discard silently
+	}
+}
+
+func (c *Client) watchChildChanges(path string) {
+	defer c.wg.Done()
+
+	if err := c.WaitUntilConnected(0); err != nil {
+		log.Error("give up for %v", err)
+		return
+	}
+
+	log.Trace("start watching %s child changes", path)
+	var loops int
+	for {
+		loops++
+
+		select {
+		case <-c.close:
+			log.Debug("%s#%d yes sir, quit", path, loops)
+			return
+		default:
+		}
+
+		currentChilds, evtCh, err := c.ChildrenW(path)
+		if err != nil {
+			switch err {
+			case zk.ErrNoNode:
+				// sleep blindly
+				log.Trace("%s#%d %s, will retry", path, loops, err)
+				time.Sleep(time.Millisecond * 100)
+
+			case zk.ErrClosing:
+				log.Trace("%s#%d zk closing", path, loops)
+				return
+
+			default:
+				log.Error("%s#%d %v", path, loops, err)
+			}
+
+			c.fireListenerError(err)
+			continue
+		}
+
+		log.Debug("%s#%d ok, waiting for child change event...", path, loops)
+		select {
+		case <-c.close:
+			return
+
+		case evt, ok := <-evtCh:
+			if !ok {
+				log.Warn("%s#%d event channel closed, quit", path, loops)
+				return
+			}
+
+			log.Debug("%s#%d got event %+v", path, loops, evt)
+
+			if evt.Err != nil {
+				log.Error("%s#%d", path, loops)
+				c.fireListenerError(evt.Err)
+				continue
+			}
+			if evt.Type != zk.EventNodeChildrenChanged {
+				// ignore
+				log.Debug("%s#%d ignored %+v", path, loops, evt)
+				continue
+			}
+
+			c.childLock.Lock()
+			log.Debug("%s#%d dispatching %+v to %d listeners", path, loops, currentChilds, len(c.childChangeListeners[path]))
+			for _, l := range c.childChangeListeners[path] {
+				if err = l.HandleChildChange(path, currentChilds); err != nil {
+					log.Error("%s#%d %+v %v", path, loops, currentChilds, err)
+				}
+			}
+			c.childLock.Unlock()
+		}
+	}
+
+}
+
+func (c *Client) SubscribeDataChanges(path string, listener ZkDataListener) {
+	c.dataLock.Lock()
+	startWatch := false
+	if _, present := c.dataChangeListeners[path]; !present {
+		c.dataChangeListeners[path] = []ZkDataListener{}
+		startWatch = true
+	}
+	c.dataChangeListeners[path] = append(c.dataChangeListeners[path], listener)
+	c.dataLock.Unlock()
+
+	if startWatch {
+		c.wg.Add(1)
+		go c.watchDataChanges(path)
+	}
+}
+
+func (c *Client) watchDataChanges(path string) {
+	defer c.wg.Done()
+
+	log.Trace("start watching data changes: %s", path)
+	for {
+		err := c.WaitUntilConnected(0)
+		if err != nil {
+			c.fireListenerError(err)
+			continue
+		}
+
+		data, evtCh, err := c.GetW(path)
+		if err != nil {
+			c.fireListenerError(err)
+			continue
+		}
+
+		select {
+		case <-c.close:
+			return
+
+		case evt := <-evtCh:
+			if evt.Err != nil {
+				c.fireListenerError(evt.Err)
+				continue
+			}
+
+			c.childLock.Lock()
+			for _, l := range c.dataChangeListeners[path] {
+				switch evt.Type {
+				case zk.EventNodeDataChanged:
+					if err = l.HandleDataChange(path, data); err != nil {
+						log.Error("handleDataChange[%s] %v", path, err)
+					}
+
+				case zk.EventNodeDeleted:
+					if err = l.HandleDataDeleted(path); err != nil {
+						log.Error("handleDataDeleted[%s] %v", path, err)
+					}
+				}
+			}
+			c.childLock.Unlock()
+		}
+	}
+
+}
+
+// TODO
+func (c *Client) UnsubscribeDataChanges(path string, listener ZkDataListener) {
+	c.dataLock.Lock()
+	c.dataLock.Unlock()
 }
 
 func (c *Client) realPath(path string) string {
@@ -181,6 +385,8 @@ func (c *Client) WaitUntilConnected(d time.Duration) (err error) {
 	t1 := time.Now()
 	retries := 0
 	for {
+		<-c.connectCalled
+
 		if _, _, err = c.zkConn.Exists("/zookeeper"); err == nil {
 			break
 		}
@@ -191,13 +397,21 @@ func (c *Client) WaitUntilConnected(d time.Duration) (err error) {
 		if d > 0 && time.Since(t1) > d {
 			break
 		} else if d > 0 {
-			time.Sleep(d)
+			select {
+			case <-c.close:
+				return
+			case <-time.After(d): // TODO time wheel
+			}
 		} else {
-			time.Sleep(c.sessionTimeout)
+			select {
+			case <-c.close:
+				return
+			case <-time.After(c.sessionTimeout):
+			}
 		}
 	}
 
-	log.Debug("zk Client WaitUntilConnected %s", time.Since(t1))
+	log.Debug("zkClient WaitUntilConnected %s", time.Since(t1))
 	return
 }
 
@@ -210,10 +424,6 @@ func (c *Client) SessionID() string {
 }
 
 func (c *Client) Exists(path string) (result bool, err error) {
-	if !c.IsConnected() {
-		return false, ErrNotConnected
-	}
-
 	if c.withRetry {
 		err = retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
 			result, c.stat, err = c.zkConn.Exists(c.realPath(path))
@@ -258,10 +468,6 @@ func (c *Client) Get(path string) (data []byte, err error) {
 }
 
 func (c *Client) GetW(path string) (data []byte, events <-chan zk.Event, err error) {
-	if !c.IsConnected() {
-		return nil, nil, ErrNotConnected
-	}
-
 	if c.withRetry {
 		err = retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
 			data, c.stat, events, err = c.zkConn.GetW(c.realPath(path))
@@ -279,19 +485,11 @@ func (c *Client) GetW(path string) (data []byte, events <-chan zk.Event, err err
 }
 
 func (c *Client) Set(path string, data []byte) error {
-	if !c.IsConnected() {
-		return ErrNotConnected
-	}
-
 	_, err := c.zkConn.Set(c.realPath(path), data, c.stat.Version)
 	return err
 }
 
 func (c *Client) Create(path string, data []byte, flags int32, acl []zk.ACL) (string, error) {
-	if !c.IsConnected() {
-		return "", ErrNotConnected
-	}
-
 	return c.zkConn.Create(c.realPath(path), data, flags, acl)
 }
 
@@ -379,10 +577,6 @@ func (c *Client) Delete(path string) error {
 }
 
 func (c *Client) DeleteTree(path string) error {
-	if !c.IsConnected() {
-		return ErrNotConnected
-	}
-
 	return c.deleteTreeRealPath(c.realPath(path))
 }
 
