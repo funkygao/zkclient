@@ -240,6 +240,9 @@ func (c *Client) watchChildChanges(path string) {
 		default:
 		}
 
+		// because zk watcher is one-time trigger, if the event happends too fast
+		// we might lose events between the watchers:
+		// watches are used to find out about the latest change
 		currentChilds, evtCh, err := c.ChildrenW(path)
 		if err != nil {
 			switch err {
