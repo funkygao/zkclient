@@ -57,12 +57,14 @@ func (l *dummyListener) HandleChildChange(parentPath string, currentChilds []str
 func (l *dummyListener) HandleDataChange(dataPath string, data []byte) error {
 	l.t.Logf("data change: %s %s", dataPath, string(data))
 	l.dataChanged = true
+	glog.Info("%s data changed to %s", dataPath, string(data))
 	return nil
 }
 
 func (l *dummyListener) HandleDataDeleted(dataPath string) error {
 	l.t.Logf("data deleted: %s", dataPath)
 	l.dataDeleted = true
+	glog.Info("%s deleted", dataPath)
 	return nil
 }
 
@@ -106,6 +108,39 @@ func TestConnectSubscribeStateChanges(t *testing.T) {
 	assert.Equal(t, true, l.hasNewSession)
 	assert.Equal(t, true, l.stateChanged)
 	c.Disconnect()
+}
+
+func TestSubscribeDataChanges(t *testing.T) {
+	c := New(testZkSvr)
+	l := &dummyListener{t: t}
+
+	now := time.Now()
+	path := "/TestSubscribeDataChanges" + now.Format("20060102150405")
+
+	glog.Info("connecting")
+	c.SubscribeDataChanges(path, l)
+
+	err := c.Connect()
+	assert.Equal(t, nil, err)
+	defer func() {
+		glog.Info("disconnecting...")
+		c.Disconnect()
+	}()
+
+	assert.Equal(t, nil, c.CreatePersistent(path, []byte{}))
+	defer func() {
+		glog.Info("deleting %s", path)
+		c.DeleteTree(path)
+	}()
+	glog.Info("%s created", path)
+
+	// trigger data change
+	time.Sleep(time.Millisecond * 100)
+	assert.Equal(t, nil, c.Set(path, []byte("haha")))
+	glog.Info("%s updated", path)
+
+	time.Sleep(time.Second)
+	assert.Equal(t, true, l.dataChanged)
 }
 
 func TestSubscribeChildChanges(t *testing.T) {

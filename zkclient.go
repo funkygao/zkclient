@@ -319,41 +319,78 @@ func (c *Client) SubscribeDataChanges(path string, listener ZkDataListener) {
 func (c *Client) watchDataChanges(path string) {
 	defer c.wg.Done()
 
+	if err := c.WaitUntilConnected(0); err != nil {
+		log.Error("give up for %v", err)
+		return
+	}
+
 	log.Trace("start watching data changes: %s", path)
+	var loops int
 	for {
-		err := c.WaitUntilConnected(0)
-		if err != nil {
-			c.fireListenerError(err)
-			continue
+		loops++
+
+		select {
+		case <-c.close:
+			log.Debug("%s#%d yes sir, quit", path, loops)
+			return
+		default:
 		}
 
 		data, evtCh, err := c.GetW(path)
 		if err != nil {
+			switch err {
+			case zk.ErrNoNode:
+				// sleep blindly
+				log.Trace("%s#%d %s, will retry", path, loops, err)
+				time.Sleep(time.Millisecond * 100)
+
+			case zk.ErrClosing:
+				log.Trace("%s#%d zk closing", path, loops)
+				return
+
+			default:
+				log.Error("%s#%d %v", path, loops, err)
+			}
+
 			c.fireListenerError(err)
 			continue
 		}
 
+		log.Debug("%s#%d ok, waiting for data change event...", path, loops)
 		select {
 		case <-c.close:
 			return
 
-		case evt := <-evtCh:
+		case evt, ok := <-evtCh:
+			if !ok {
+				log.Warn("%s#%d event channel closed, quit", path, loops)
+				return
+			}
+
 			if evt.Err != nil {
+				log.Error("%s#%d", path, loops)
 				c.fireListenerError(evt.Err)
 				continue
 			}
+			if evt.Type != zk.EventNodeDataChanged && evt.Type != zk.EventNodeDeleted {
+				// ignore
+				log.Debug("%s#%d ignored %+v", path, loops, evt)
+				continue
+			}
+
+			log.Debug("%s#%d got event %+v", path, loops, evt)
 
 			c.childLock.Lock()
 			for _, l := range c.dataChangeListeners[path] {
 				switch evt.Type {
 				case zk.EventNodeDataChanged:
 					if err = l.HandleDataChange(path, data); err != nil {
-						log.Error("handleDataChange[%s] %v", path, err)
+						log.Error("%s#%d %v", path, loops, err)
 					}
 
 				case zk.EventNodeDeleted:
 					if err = l.HandleDataDeleted(path); err != nil {
-						log.Error("handleDataDeleted[%s] %v", path, err)
+						log.Error("%s#%d %v", path, loops, err)
 					}
 				}
 			}
