@@ -148,6 +148,42 @@ func TestSubscribeDataChanges(t *testing.T) {
 	assert.Equal(t, true, l.dataChanged)
 }
 
+func TestUnsubscribeDataChanges(t *testing.T) {
+	c := New(testZkSvr)
+	l := &dummyListener{t: t}
+
+	now := time.Now()
+	path := "/TestSubscribeDataChanges" + now.Format("20060102150405")
+
+	glog.Info("connecting")
+	c.SubscribeDataChanges(path, l)
+
+	// test duplicated subscribe
+	for i := 0; i < 5; i++ {
+		c.SubscribeDataChanges(path, l)
+	}
+
+	err := c.Connect()
+	assert.Equal(t, nil, err)
+	defer func() {
+		glog.Info("disconnecting...")
+		c.Disconnect()
+	}()
+
+	assert.Equal(t, nil, c.CreatePersistent(path, []byte{}))
+	defer func() {
+		glog.Info("deleting %s", path)
+		c.DeleteTree(path)
+	}()
+	glog.Info("%s created", path)
+
+	for i := 0; i < 3; i++ {
+		c.UnsubscribeDataChanges(path, l)
+	}
+
+	time.Sleep(time.Second)
+}
+
 func TestSubscribeChildChanges(t *testing.T) {
 	c := New(testZkSvr)
 	l := &dummyListener{t: t}
@@ -184,6 +220,35 @@ func TestSubscribeChildChanges(t *testing.T) {
 
 	time.Sleep(time.Second)
 	assert.Equal(t, true, l.childChanged)
+}
+
+func TestUnsubscribeChildChanges(t *testing.T) {
+	c := New(testZkSvr)
+	l := &dummyListener{t: t}
+
+	now := time.Now()
+	path := "/TestSubscribeChildChanges" + now.Format("20060102150405")
+
+	glog.Info("connecting")
+	c.SubscribeChildChanges(path, l)
+
+	// test duplicated subscribe
+	for i := 0; i < 10; i++ {
+		c.SubscribeChildChanges(path, l)
+	}
+
+	err := c.Connect()
+	assert.Equal(t, nil, err)
+	defer func() {
+		glog.Info("disconnecting...")
+		c.Disconnect()
+	}()
+
+	c.UnsubscribeChildChanges(path, l)
+	// permit multiple calls
+	c.UnsubscribeChildChanges(path, l)
+
+	time.Sleep(time.Second)
 }
 
 func TestSubscribeChildChangesFastChange(t *testing.T) {

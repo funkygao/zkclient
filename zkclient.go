@@ -40,9 +40,11 @@ type Client struct {
 
 	childLock            sync.RWMutex
 	childChangeListeners map[string][]ZkChildListener
+	childWatchStopper    map[string]chan struct{}
 
 	dataLock            sync.RWMutex
 	dataChangeListeners map[string][]ZkDataListener
+	dataWatchStopper    map[string]chan struct{}
 }
 
 var defaultSessionTimeout = time.Second * 30
@@ -65,7 +67,9 @@ func New(zkSvr string, options ...Option) *Client {
 		wrapErrorWithPath:    false,
 		stateChangeListeners: []ZkStateListener{},
 		childChangeListeners: map[string][]ZkChildListener{},
+		childWatchStopper:    map[string]chan struct{}{},
 		dataChangeListeners:  map[string][]ZkDataListener{},
+		dataWatchStopper:     map[string]chan struct{}{},
 		lisenterErrCh:        make(chan error, 1<<8),
 		connectCalled:        make(chan struct{}),
 	}
@@ -146,6 +150,8 @@ func (c *Client) SetSessionTimeout(t time.Duration) error {
 // to labor to handle the thread-safe issue.
 func (c *Client) SubscribeStateChanges(listener ZkStateListener) {
 	c.stateLock.Lock()
+	defer c.stateLock.Unlock()
+
 	ok := true
 	for _, l := range c.stateChangeListeners {
 		if l == listener {
@@ -157,7 +163,6 @@ func (c *Client) SubscribeStateChanges(listener ZkStateListener) {
 	if ok {
 		c.stateChangeListeners = append(c.stateChangeListeners, listener)
 	}
-	c.stateLock.Unlock()
 }
 
 func (c *Client) watchStateChanges() {
@@ -203,6 +208,8 @@ func (c *Client) watchStateChanges() {
 
 func (c *Client) SubscribeChildChanges(path string, listener ZkChildListener) {
 	c.childLock.Lock()
+	defer c.childLock.Unlock()
+
 	startWatch := false
 	if _, present := c.childChangeListeners[path]; !present {
 		c.childChangeListeners[path] = []ZkChildListener{}
@@ -220,18 +227,32 @@ func (c *Client) SubscribeChildChanges(path string, listener ZkChildListener) {
 	if ok {
 		c.childChangeListeners[path] = append(c.childChangeListeners[path], listener)
 	}
-	c.childLock.Unlock()
 
 	if startWatch {
+		c.childWatchStopper[path] = make(chan struct{})
+
 		c.wg.Add(1)
 		go c.watchChildChanges(path)
 	}
 }
 
-// TODO
 func (c *Client) UnsubscribeChildChanges(path string, listener ZkChildListener) {
 	c.childLock.Lock()
-	c.childLock.Unlock()
+	defer c.childLock.Unlock()
+
+	var newListeners []ZkChildListener
+	found := false
+	for _, l := range c.childChangeListeners[path] {
+		if l != listener {
+			newListeners = append(newListeners, l)
+		} else {
+			found = true
+		}
+	}
+	if found && len(newListeners) == 0 {
+		close(c.childWatchStopper[path])
+	}
+	c.childChangeListeners[path] = newListeners
 }
 
 func (c *Client) watchChildChanges(path string) {
@@ -242,6 +263,10 @@ func (c *Client) watchChildChanges(path string) {
 		return
 	}
 
+	c.childLock.RLock()
+	stopper := c.childWatchStopper[path]
+	c.childLock.RUnlock()
+
 	log.Trace("start watching %s child changes", path)
 	var loops int
 	for {
@@ -250,6 +275,9 @@ func (c *Client) watchChildChanges(path string) {
 		select {
 		case <-c.close:
 			log.Debug("%s#%d yes sir, quit", path, loops)
+			return
+		case <-stopper:
+			log.Debug("%s#%d yes sir, stopped", path, loops)
 			return
 		default:
 		}
@@ -280,6 +308,11 @@ func (c *Client) watchChildChanges(path string) {
 		log.Debug("%s#%d ok, waiting for child change event...", path, loops)
 		select {
 		case <-c.close:
+			log.Debug("%s#%d yes sir, quit", path, loops)
+			return
+
+		case <-stopper:
+			log.Debug("%s#%d yes sir, stopped", path, loops)
 			return
 
 		case evt, ok := <-evtCh:
@@ -316,6 +349,8 @@ func (c *Client) watchChildChanges(path string) {
 
 func (c *Client) SubscribeDataChanges(path string, listener ZkDataListener) {
 	c.dataLock.Lock()
+	defer c.dataLock.Unlock()
+
 	startWatch := false
 	if _, present := c.dataChangeListeners[path]; !present {
 		c.dataChangeListeners[path] = []ZkDataListener{}
@@ -333,9 +368,10 @@ func (c *Client) SubscribeDataChanges(path string, listener ZkDataListener) {
 	if ok {
 		c.dataChangeListeners[path] = append(c.dataChangeListeners[path], listener)
 	}
-	c.dataLock.Unlock()
 
 	if startWatch {
+		c.dataWatchStopper[path] = make(chan struct{})
+
 		c.wg.Add(1)
 		go c.watchDataChanges(path)
 	}
@@ -349,6 +385,10 @@ func (c *Client) watchDataChanges(path string) {
 		return
 	}
 
+	c.dataLock.RLock()
+	stopper := c.dataWatchStopper[path]
+	c.dataLock.RUnlock()
+
 	log.Trace("start watching data changes: %s", path)
 	var loops int
 	for {
@@ -357,6 +397,9 @@ func (c *Client) watchDataChanges(path string) {
 		select {
 		case <-c.close:
 			log.Debug("%s#%d yes sir, quit", path, loops)
+			return
+		case <-stopper:
+			log.Debug("%s#%d yes sir, stopped", path, loops)
 			return
 		default:
 		}
@@ -384,6 +427,11 @@ func (c *Client) watchDataChanges(path string) {
 		log.Debug("%s#%d ok, waiting for data change event...", path, loops)
 		select {
 		case <-c.close:
+			log.Debug("%s#%d yes sir, quit", path, loops)
+			return
+
+		case <-stopper:
+			log.Debug("%s#%d yes sir, stopped", path, loops)
 			return
 
 		case evt, ok := <-evtCh:
@@ -425,10 +473,23 @@ func (c *Client) watchDataChanges(path string) {
 
 }
 
-// TODO
 func (c *Client) UnsubscribeDataChanges(path string, listener ZkDataListener) {
 	c.dataLock.Lock()
-	c.dataLock.Unlock()
+	defer c.dataLock.Unlock()
+
+	var newListeners []ZkDataListener
+	found := false
+	for _, l := range c.dataChangeListeners[path] {
+		if l != listener {
+			newListeners = append(newListeners, l)
+		} else {
+			found = true
+		}
+	}
+	if found && len(newListeners) == 0 {
+		close(c.dataWatchStopper[path])
+	}
+	c.dataChangeListeners[path] = newListeners
 }
 
 func (c *Client) realPath(path string) string {
