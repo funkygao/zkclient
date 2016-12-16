@@ -98,8 +98,9 @@ func (c *Client) Connect() error {
 		}
 	}
 
+	// always watch state changes to maintain IsConnected
 	c.wg.Add(1)
-	go c.watchStateChanges() // TODO move to subscribe func
+	go c.watchStateChanges()
 
 	log.Debug("zkClient Connect %s", time.Since(t1))
 
@@ -145,7 +146,17 @@ func (c *Client) SetSessionTimeout(t time.Duration) error {
 // to labor to handle the thread-safe issue.
 func (c *Client) SubscribeStateChanges(listener ZkStateListener) {
 	c.stateLock.Lock()
-	c.stateChangeListeners = append(c.stateChangeListeners, listener)
+	ok := true
+	for _, l := range c.stateChangeListeners {
+		if l == listener {
+			log.Warn("duplicated state changes subscribe %p", listener)
+			ok = false
+			break
+		}
+	}
+	if ok {
+		c.stateChangeListeners = append(c.stateChangeListeners, listener)
+	}
 	c.stateLock.Unlock()
 }
 
@@ -197,7 +208,18 @@ func (c *Client) SubscribeChildChanges(path string, listener ZkChildListener) {
 		c.childChangeListeners[path] = []ZkChildListener{}
 		startWatch = true
 	}
-	c.childChangeListeners[path] = append(c.childChangeListeners[path], listener)
+
+	ok := true
+	for _, l := range c.childChangeListeners[path] {
+		if l == listener {
+			log.Warn("duplicated child changes subscribe: %s %p", path, listener)
+			ok = false
+			break
+		}
+	}
+	if ok {
+		c.childChangeListeners[path] = append(c.childChangeListeners[path], listener)
+	}
 	c.childLock.Unlock()
 
 	if startWatch {
@@ -210,14 +232,6 @@ func (c *Client) SubscribeChildChanges(path string, listener ZkChildListener) {
 func (c *Client) UnsubscribeChildChanges(path string, listener ZkChildListener) {
 	c.childLock.Lock()
 	c.childLock.Unlock()
-}
-
-func (c *Client) fireListenerError(err error) {
-	select {
-	case c.lisenterErrCh <- err:
-	default:
-		// discard silently
-	}
 }
 
 func (c *Client) watchChildChanges(path string) {
@@ -307,7 +321,18 @@ func (c *Client) SubscribeDataChanges(path string, listener ZkDataListener) {
 		c.dataChangeListeners[path] = []ZkDataListener{}
 		startWatch = true
 	}
-	c.dataChangeListeners[path] = append(c.dataChangeListeners[path], listener)
+
+	ok := true
+	for _, l := range c.dataChangeListeners[path] {
+		if l == listener {
+			log.Warn("duplicated data changes subscribe: %s %p", path, listener)
+			ok = false
+			break
+		}
+	}
+	if ok {
+		c.dataChangeListeners[path] = append(c.dataChangeListeners[path], listener)
+	}
 	c.dataLock.Unlock()
 
 	if startWatch {
@@ -412,6 +437,14 @@ func (c *Client) realPath(path string) string {
 	}
 
 	return strings.TrimRight(c.chroot+path, "/")
+}
+
+func (c *Client) fireListenerError(err error) {
+	select {
+	case c.lisenterErrCh <- err:
+	default:
+		// discard silently
+	}
 }
 
 // LastStat returns last read operation(Exists/Get/GetW/Children/ChildrenW) zk stat result.

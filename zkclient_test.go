@@ -120,6 +120,11 @@ func TestSubscribeDataChanges(t *testing.T) {
 	glog.Info("connecting")
 	c.SubscribeDataChanges(path, l)
 
+	// test duplicated subscribe
+	for i := 0; i < 5; i++ {
+		c.SubscribeDataChanges(path, l)
+	}
+
 	err := c.Connect()
 	assert.Equal(t, nil, err)
 	defer func() {
@@ -152,6 +157,11 @@ func TestSubscribeChildChanges(t *testing.T) {
 
 	glog.Info("connecting")
 	c.SubscribeChildChanges(path, l)
+
+	// test duplicated subscribe
+	for i := 0; i < 10; i++ {
+		c.SubscribeChildChanges(path, l)
+	}
 
 	err := c.Connect()
 	assert.Equal(t, nil, err)
