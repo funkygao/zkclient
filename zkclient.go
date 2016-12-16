@@ -23,6 +23,7 @@ type Client struct {
 	withRetry         bool
 	wrapErrorWithPath bool
 
+	connectOnce   sync.Once
 	isConnected   sync2.AtomicBool
 	connectCalled chan struct{}
 	close         chan struct{}
@@ -71,7 +72,6 @@ func New(zkSvr string, options ...Option) *Client {
 		dataChangeListeners:  map[string][]ZkDataListener{},
 		dataWatchStopper:     map[string]chan struct{}{},
 		lisenterErrCh:        make(chan error, 1<<8),
-		connectCalled:        make(chan struct{}),
 	}
 	c.isConnected.Set(false)
 
@@ -86,6 +86,7 @@ func New(zkSvr string, options ...Option) *Client {
 func (c *Client) Connect() error {
 	t1 := time.Now()
 
+	c.connectCalled = make(chan struct{})
 	zkConn, stateEvtCh, err := zk.Connect(c.servers, c.sessionTimeout)
 	if err != nil {
 		return err
@@ -103,8 +104,10 @@ func (c *Client) Connect() error {
 	}
 
 	// always watch state changes to maintain IsConnected
-	c.wg.Add(1)
-	go c.watchStateChanges()
+	c.connectOnce.Do(func() {
+		c.wg.Add(1)
+		go c.watchStateChanges()
+	})
 
 	log.Debug("zkClient Connect %s", time.Since(t1))
 
@@ -644,9 +647,7 @@ func (c *Client) CreateEphemeral(path string, data []byte) error {
 }
 
 func (c *Client) CreatePersistentRecord(p string, r Marshaller) error {
-	parent := path.Dir(p)
-	err := c.ensurePathExists(c.realPath(parent))
-	if err != nil {
+	if err := c.ensurePathExists(c.realPath(path.Dir(p))); err != nil {
 		return err
 	}
 

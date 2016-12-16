@@ -97,6 +97,14 @@ func TestConnectionWaitUntil(t *testing.T) {
 	c.Disconnect()
 }
 
+func TestMiltipleConnect(t *testing.T) {
+	c := New(testZkSvr)
+	for i := 0; i < 5; i++ {
+		assert.Equal(t, nil, c.Connect())
+		c.Disconnect()
+	}
+}
+
 func TestConnectSubscribeStateChanges(t *testing.T) {
 	c := New(testZkSvr)
 	l := &dummyListener{t: t}
