@@ -206,6 +206,12 @@ func (c *Client) SessionID() string {
 	return strconv.FormatInt(c.zkConn.SessionID(), 10)
 }
 
+// LisenterErrors returns a channel that you can read to obtain errors from all
+// but state change listeners.
+func (c *Client) LisenterErrors() <-chan error {
+	return c.lisenterErrCh
+}
+
 func (c *Client) Exists(path string) (result bool, err error) {
 	if c.withRetry {
 		err = retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
