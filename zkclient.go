@@ -71,7 +71,6 @@ func New(zkSvr string, options ...Option) *Client {
 		childWatchStopper:    map[string]chan struct{}{},
 		dataChangeListeners:  map[string][]ZkDataListener{},
 		dataWatchStopper:     map[string]chan struct{}{},
-		lisenterErrCh:        make(chan error, 1<<8),
 	}
 	c.isConnected.Set(false)
 
@@ -94,6 +93,7 @@ func (c *Client) Connect() error {
 
 	close(c.connectCalled)
 	c.close = make(chan struct{})
+	c.lisenterErrCh = make(chan error, 1<<8)
 	c.zkConn = zkConn
 	c.stateEvtCh = stateEvtCh
 
@@ -127,6 +127,7 @@ func (c *Client) Disconnect() {
 	c.zkConn = nil
 	c.stat = nil
 	c.isConnected.Set(false)
+	close(c.lisenterErrCh)
 
 	log.Debug("zkClient Disconnect %s", time.Since(t1))
 }
