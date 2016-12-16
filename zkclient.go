@@ -15,7 +15,7 @@ import (
 )
 
 type Client struct {
-	sync.RWMutex
+	sync.RWMutex // FIXME
 
 	zkSvr, chroot     string
 	servers           []string
