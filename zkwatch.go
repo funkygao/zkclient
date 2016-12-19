@@ -162,7 +162,7 @@ func (c *Client) watchChildChanges(path string) {
 				log.Error("%s#%d %v", path, loops, err)
 			}
 
-			c.fireListenerError(err)
+			c.fireListenerError(path, err)
 			continue
 		}
 
@@ -186,7 +186,7 @@ func (c *Client) watchChildChanges(path string) {
 
 			if evt.Err != nil {
 				log.Error("%s#%d", path, loops)
-				c.fireListenerError(evt.Err)
+				c.fireListenerError(path, evt.Err)
 				continue
 			}
 			if evt.Type != zk.EventNodeChildrenChanged {
@@ -281,7 +281,7 @@ func (c *Client) watchDataChanges(path string) {
 				log.Error("%s#%d %v", path, loops, err)
 			}
 
-			c.fireListenerError(err)
+			c.fireListenerError(path, err)
 			continue
 		}
 
@@ -303,7 +303,7 @@ func (c *Client) watchDataChanges(path string) {
 
 			if evt.Err != nil {
 				log.Error("%s#%d", path, loops)
-				c.fireListenerError(evt.Err)
+				c.fireListenerError(path, evt.Err)
 				continue
 			}
 			if evt.Type != zk.EventNodeDataChanged && evt.Type != zk.EventNodeDeleted {
@@ -353,9 +353,9 @@ func (c *Client) UnsubscribeDataChanges(path string, listener ZkDataListener) {
 	c.dataChangeListeners[path] = newListeners
 }
 
-func (c *Client) fireListenerError(err error) {
+func (c *Client) fireListenerError(path string, err error) {
 	select {
-	case c.lisenterErrCh <- err:
+	case c.lisenterErrCh <- ListenerError{Path: path, Err: err}:
 	default:
 		// discard silently
 	}

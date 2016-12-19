@@ -34,7 +34,7 @@ type Client struct {
 	stateEvtCh <-chan zk.Event
 	acl        []zk.ACL
 
-	lisenterErrCh chan error
+	lisenterErrCh chan ListenerError
 
 	stateLock            sync.RWMutex
 	stateChangeListeners []ZkStateListener
@@ -93,7 +93,7 @@ func (c *Client) Connect() error {
 
 	close(c.connectCalled)
 	c.close = make(chan struct{})
-	c.lisenterErrCh = make(chan error, 1<<8)
+	c.lisenterErrCh = make(chan ListenerError, 1<<8)
 	c.zkConn = zkConn
 	c.stateEvtCh = stateEvtCh
 
@@ -209,7 +209,7 @@ func (c *Client) SessionID() string {
 
 // LisenterErrors returns a channel that you can read to obtain errors from all
 // but state change listeners.
-func (c *Client) LisenterErrors() <-chan error {
+func (c *Client) LisenterErrors() <-chan ListenerError {
 	return c.lisenterErrCh
 }
 
