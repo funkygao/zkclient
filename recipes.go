@@ -14,7 +14,7 @@ import (
 // An ephemeral node may still exist even after its corresponding session has
 // expired and CreateLiveNode solves this problem.
 func (c *Client) CreateLiveNode(path string, data []byte, maxRetry int) (err error) {
-	log.Debug("%s[%s] creating live node...", c.SessionID(), path)
+	log.Trace("%s[%s] creating live node...", c.SessionID(), path)
 
 	if err = c.ensurePathExists(c.realPath(gopath.Dir(path))); err != nil {
 		return
@@ -54,7 +54,7 @@ func (c *Client) CreateLiveNode(path string, data []byte, maxRetry int) (err err
 	}
 
 	if err == nil {
-		log.Debug("%s[%s] #%d created live node", c.SessionID(), path, retry)
+		log.Trace("%s[%s] #%d created live node", c.SessionID(), path, retry)
 	}
 
 	return

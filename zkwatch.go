@@ -128,7 +128,7 @@ func (c *Client) watchChildChanges(path string) {
 	stopper := c.childWatchStopper[path]
 	c.childLock.RUnlock()
 
-	log.Debug("start watching %s child changes", path)
+	log.Trace("start watching %s child changes", path)
 	var loops int
 	for {
 		loops++
@@ -250,7 +250,7 @@ func (c *Client) watchDataChanges(path string) {
 	stopper := c.dataWatchStopper[path]
 	c.dataLock.RUnlock()
 
-	log.Trace("start watching data changes: %s", path)
+	log.Trace("start watching %s data changes", path)
 	var loops int
 	for {
 		loops++
