@@ -109,7 +109,7 @@ func (c *Client) Connect() error {
 		go c.watchStateChanges()
 	})
 
-	log.Debug("zkClient Connect %s", time.Since(t1))
+	log.Debug("Connect %s", time.Since(t1))
 
 	return nil
 }
@@ -129,7 +129,7 @@ func (c *Client) Disconnect() {
 	c.isConnected.Set(false)
 	close(c.lisenterErrCh)
 
-	log.Debug("zkClient Disconnect %s", time.Since(t1))
+	log.Debug("Disconnect %s", time.Since(t1))
 }
 
 // ZkSvr returns the raw zookeeper servers connection string.
@@ -195,7 +195,7 @@ func (c *Client) WaitUntilConnected(d time.Duration) (err error) {
 		}
 	}
 
-	log.Debug("zkClient WaitUntilConnected %s", time.Since(t1))
+	log.Debug("WaitUntilConnected %s", time.Since(t1))
 	return
 }
 
