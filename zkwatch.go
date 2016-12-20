@@ -16,7 +16,7 @@ func (c *Client) SubscribeStateChanges(listener ZkStateListener) {
 	ok := true
 	for _, l := range c.stateChangeListeners {
 		if l == listener {
-			log.Warn("duplicated state changes subscribe %p", listener)
+			log.Debug("duplicated state changes subscribe %p", listener)
 			ok = false
 			break
 		}
@@ -80,7 +80,7 @@ func (c *Client) SubscribeChildChanges(path string, listener ZkChildListener) {
 	ok := true
 	for _, l := range c.childChangeListeners[path] {
 		if l == listener {
-			log.Warn("duplicated child changes subscribe: %s %p", path, listener)
+			log.Debug("duplicated child changes subscribe: %s %p", path, listener)
 			ok = false
 			break
 		}
@@ -221,7 +221,7 @@ func (c *Client) SubscribeDataChanges(path string, listener ZkDataListener) {
 	ok := true
 	for _, l := range c.dataChangeListeners[path] {
 		if l == listener {
-			log.Warn("duplicated data changes subscribe: %s %p", path, listener)
+			log.Debug("duplicated data changes subscribe: %s %p", path, listener)
 			ok = false
 			break
 		}
