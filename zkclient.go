@@ -3,6 +3,7 @@ package zkclient
 import (
 	"fmt"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -338,6 +339,50 @@ func (c *Client) Children(path string) (children []string, err error) {
 		})
 	} else {
 		children, c.stat, err = c.zkConn.Children(c.realPath(path))
+	}
+
+	return
+}
+
+func (c *Client) ChildrenValues(p string) (children []string, values [][]byte, err error) {
+	if c.withRetry {
+		err = retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
+			children, c.stat, err = c.zkConn.Children(c.realPath(p))
+			if err != nil {
+				return retry.RetryContinue, c.wrapZkError(p, err)
+			}
+
+			sort.Strings(children)
+
+			values = make([][]byte, 0, len(children))
+			var data []byte
+			for _, child := range children {
+				if data, err = c.Get(c.realPath(path.Join(p, child))); err != nil {
+					return retry.RetryContinue, c.wrapZkError(p, err)
+				}
+
+				values = append(values, data)
+			}
+
+			return retry.RetryBreak, nil
+		})
+	} else {
+		children, c.stat, err = c.zkConn.Children(c.realPath(p))
+		if err != nil {
+			return
+		}
+
+		sort.Strings(children)
+
+		values = make([][]byte, 0, len(children))
+		var data []byte
+		for _, child := range children {
+			if data, err = c.Get(c.realPath(path.Join(p, child))); err != nil {
+				return
+			}
+
+			values = append(values, data)
+		}
 	}
 
 	return

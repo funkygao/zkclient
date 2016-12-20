@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"path"
 	"testing"
 	"time"
 
@@ -95,6 +96,31 @@ func TestConnectionWaitUntil(t *testing.T) {
 	t.Logf("waitUntilConnect %s", time.Since(t1))
 
 	c.Disconnect()
+}
+
+func TestChildrenValues(t *testing.T) {
+	c := New(testZkSvr)
+	c.SetSessionTimeout(time.Second * 41)
+	err := c.Connect()
+	assert.Equal(t, nil, err)
+
+	now := time.Now()
+	root := "/TestChildrenValues" + now.Format("20060102150405")
+	defer func() {
+		c.DeleteTree(root)
+		c.Disconnect()
+	}()
+
+	data := []byte("hello world")
+	assert.Equal(t, nil, c.CreatePersistent(root, data))
+	assert.Equal(t, nil, c.CreatePersistent(path.Join(root, "a"), data))
+	assert.Equal(t, nil, c.CreatePersistent(path.Join(root, "b"), data))
+
+	chilren, values, err := c.ChildrenValues(root)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, data, values[1])
+	assert.Equal(t, 2, len(values))
+	t.Logf("%+v %+v", chilren, values)
 }
 
 func TestMiltipleConnect(t *testing.T) {
