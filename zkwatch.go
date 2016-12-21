@@ -166,7 +166,7 @@ func (c *Client) watchChildChanges(path string) {
 		if err != nil {
 			switch err {
 			case zk.ErrNoNode:
-				log.Trace("%s#%d %s, will retry", path, loops, err)
+				log.Trace("%s#%d %s, will retry after %s", path, loops, err, blindBackoff)
 				time.Sleep(blindBackoff)
 
 			case zk.ErrClosing:
@@ -304,7 +304,7 @@ func (c *Client) watchDataChanges(path string) {
 		if err != nil {
 			switch err {
 			case zk.ErrNoNode:
-				log.Trace("%s#%d %s, will retry", path, loops, err)
+				log.Trace("%s#%d %s, will retry after %s", path, loops, err, blindBackoff)
 				time.Sleep(blindBackoff)
 
 			case zk.ErrClosing:
