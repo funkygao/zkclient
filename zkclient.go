@@ -42,6 +42,8 @@ type Client struct {
 	stateLock            sync.RWMutex
 	stateChangeListeners []ZkStateListener
 
+	birthCry bool
+
 	childLock            sync.RWMutex
 	childChangeListeners map[string][]ZkChildListener
 	childWatchStopper    map[string]chan struct{}
@@ -70,6 +72,7 @@ func New(zkSvr string, options ...Option) *Client {
 		acl:                  zk.WorldACL(zk.PermAll),
 		wrapErrorWithPath:    false,
 		stateChangeListeners: []ZkStateListener{},
+		birthCry:             false,
 		childChangeListeners: map[string][]ZkChildListener{},
 		childWatchStopper:    map[string]chan struct{}{},
 		dataChangeListeners:  map[string][]ZkDataListener{},
@@ -112,27 +115,30 @@ func (c *Client) Connect() error {
 		go c.watchStateChanges()
 	})
 
-	log.Debug("Connect %s", time.Since(t1))
+	log.Debug("Connected in %s", time.Since(t1))
 
 	return nil
 }
 
 // Disconnect will disconnect from the zookeeper ensemble and release related resources.
 func (c *Client) Disconnect() {
+	log.Debug("Disconnecting...")
+
 	t1 := time.Now()
+
+	close(c.close)
+	c.wg.Wait()
 
 	if c.zkConn != nil {
 		c.zkConn.Close()
 	}
-	close(c.close)
-	c.wg.Wait()
 
 	c.zkConn = nil
 	c.stat = nil
 	c.isConnected.Set(false)
 	close(c.lisenterErrCh)
 
-	log.Debug("Disconnect %s", time.Since(t1))
+	log.Debug("Disconnected in %s", time.Since(t1))
 }
 
 // ZkSvr returns the raw zookeeper servers connection string.
@@ -151,6 +157,10 @@ func (c *Client) SetSessionTimeout(t time.Duration) error {
 
 	c.sessionTimeout = t
 	return nil
+}
+
+func (c *Client) SetLisenterBirthCry(yes bool) {
+	c.birthCry = yes
 }
 
 func (c *Client) realPath(path string) string {

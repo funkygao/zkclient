@@ -41,7 +41,7 @@ func (c *Client) watchStateChanges() {
 
 		select {
 		case <-c.close:
-			log.Debug("#%d got close signal, quit", loops)
+			log.Debug("#%d got close signal, watchStateChanges quit", loops)
 			return
 
 		case evt = <-c.stateEvtCh:
@@ -143,17 +143,20 @@ func (c *Client) watchChildChanges(path string) {
 	c.childLock.RUnlock()
 
 	log.Trace("start watching %s child changes", path)
-	var loops int
+	var (
+		loops    int
+		birthCry = false
+	)
 	for {
 		loops++
 
 		select {
 		case <-c.close:
-			log.Debug("%s#%d yes sir, quit", path, loops)
+			log.Debug("%s#%d yes sir, watchChildChanges quit", path, loops)
 			c.stopChildWatch(path)
 			return
 		case <-stopper:
-			log.Debug("%s#%d yes sir, stopped", path, loops)
+			log.Debug("%s#%d yes sir, watchChildChanges stopped", path, loops)
 			c.stopChildWatch(path)
 			return
 		default:
@@ -182,21 +185,34 @@ func (c *Client) watchChildChanges(path string) {
 			continue
 		}
 
+		if c.birthCry && !birthCry {
+			birthCry = true
+
+			c.childLock.Lock()
+			log.Debug("%s#%d birth cry to %d listeners", path, loops, len(c.childChangeListeners[path]))
+			for _, l := range c.childChangeListeners[path] {
+				if err = l.HandleChildChange(path, currentChilds); err != nil {
+					log.Error("%s#%d %+v %v", path, loops, currentChilds, err)
+				}
+			}
+			c.childLock.Unlock()
+		}
+
 		log.Debug("%s#%d ok, waiting for child change event...", path, loops)
 		select {
 		case <-c.close:
-			log.Debug("%s#%d yes sir, quit", path, loops)
+			log.Debug("%s#%d yes sir, watchChildChanges quit", path, loops)
 			c.stopChildWatch(path)
 			return
 
 		case <-stopper:
-			log.Debug("%s#%d yes sir, stopped", path, loops)
+			log.Debug("%s#%d yes sir, watchChildChanges stopped", path, loops)
 			c.stopChildWatch(path)
 			return
 
 		case evt, ok := <-evtCh:
 			if !ok {
-				log.Warn("%s#%d event channel closed, quit", path, loops)
+				log.Warn("%s#%d event channel closed, watchChildChanges quit", path, loops)
 				c.stopChildWatch(path)
 				return
 			}
@@ -284,17 +300,20 @@ func (c *Client) watchDataChanges(path string) {
 	c.dataLock.RUnlock()
 
 	log.Trace("start watching %s data changes", path)
-	var loops int
+	var (
+		loops    int
+		birthCry = false
+	)
 	for {
 		loops++
 
 		select {
 		case <-c.close:
-			log.Debug("%s#%d yes sir, quit", path, loops)
+			log.Debug("%s#%d yes sir, watchDataChanges quit", path, loops)
 			c.stopDataWatch(path)
 			return
 		case <-stopper:
-			log.Debug("%s#%d yes sir, stopped", path, loops)
+			log.Debug("%s#%d yes sir, watchDataChanges stopped", path, loops)
 			c.stopDataWatch(path)
 			return
 		default:
@@ -320,21 +339,34 @@ func (c *Client) watchDataChanges(path string) {
 			continue
 		}
 
+		if c.birthCry && !birthCry {
+			birthCry = true
+
+			c.dataLock.Lock()
+			log.Debug("%s#%d birth cry to %d listeners", path, loops, len(c.dataChangeListeners[path]))
+			for _, l := range c.dataChangeListeners[path] {
+				if err = l.HandleDataChange(path, data); err != nil {
+					log.Error("%s#%d %v", path, loops, err)
+				}
+			}
+			c.dataLock.Unlock()
+		}
+
 		log.Debug("%s#%d ok, waiting for data change event...", path, loops)
 		select {
 		case <-c.close:
-			log.Debug("%s#%d yes sir, quit", path, loops)
+			log.Debug("%s#%d yes sir, watchDataChanges quit", path, loops)
 			c.stopDataWatch(path)
 			return
 
 		case <-stopper:
-			log.Debug("%s#%d yes sir, stopped", path, loops)
+			log.Debug("%s#%d yes sir, watchDataChanges stopped", path, loops)
 			c.stopDataWatch(path)
 			return
 
 		case evt, ok := <-evtCh:
 			if !ok {
-				log.Warn("%s#%d event channel closed, quit", path, loops)
+				log.Warn("%s#%d event channel closed, watchDataChanges quit", path, loops)
 				c.stopDataWatch(path)
 				return
 			}
