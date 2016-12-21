@@ -7,6 +7,8 @@ import (
 	log "github.com/funkygao/log4go"
 )
 
+const blindBackoff = time.Millisecond * 200
+
 // SubscribeStateChanges MUST be called before Connect as we don't want
 // to labor to handle the thread-safe issue.
 func (c *Client) SubscribeStateChanges(listener ZkStateListener) {
@@ -110,10 +112,22 @@ func (c *Client) UnsubscribeChildChanges(path string, listener ZkChildListener) 
 			found = true
 		}
 	}
-	if found && len(newListeners) == 0 {
-		close(c.childWatchStopper[path])
+
+	if !found {
+		return
 	}
+
 	c.childChangeListeners[path] = newListeners
+	if len(newListeners) == 0 {
+		close(c.childWatchStopper[path]) // GC the watcher goroutine
+		delete(c.childChangeListeners, path)
+	}
+}
+
+func (c *Client) stopChildWatch(path string) {
+	c.childLock.Lock()
+	delete(c.childChangeListeners, path)
+	c.childLock.Unlock()
 }
 
 func (c *Client) watchChildChanges(path string) {
@@ -136,9 +150,11 @@ func (c *Client) watchChildChanges(path string) {
 		select {
 		case <-c.close:
 			log.Debug("%s#%d yes sir, quit", path, loops)
+			c.stopChildWatch(path)
 			return
 		case <-stopper:
 			log.Debug("%s#%d yes sir, stopped", path, loops)
+			c.stopChildWatch(path)
 			return
 		default:
 		}
@@ -150,12 +166,12 @@ func (c *Client) watchChildChanges(path string) {
 		if err != nil {
 			switch err {
 			case zk.ErrNoNode:
-				// sleep blindly
 				log.Trace("%s#%d %s, will retry", path, loops, err)
-				time.Sleep(time.Millisecond * 100)
+				time.Sleep(blindBackoff)
 
 			case zk.ErrClosing:
 				log.Trace("%s#%d zk closing", path, loops)
+				c.stopChildWatch(path)
 				return
 
 			default:
@@ -170,22 +186,33 @@ func (c *Client) watchChildChanges(path string) {
 		select {
 		case <-c.close:
 			log.Debug("%s#%d yes sir, quit", path, loops)
+			c.stopChildWatch(path)
 			return
 
 		case <-stopper:
 			log.Debug("%s#%d yes sir, stopped", path, loops)
+			c.stopChildWatch(path)
 			return
 
 		case evt, ok := <-evtCh:
 			if !ok {
 				log.Warn("%s#%d event channel closed, quit", path, loops)
+				c.stopChildWatch(path)
+				return
+			}
+
+			if evt.Err == zk.ErrSessionExpired || evt.State == zk.StateDisconnected {
+				// e,g.
+				// {Type:EventNotWatching State:StateDisconnected Path:/foobar Err:zk: session has been expired by the server}
+				log.Trace("%s#%d stop watching for %+v", path, loops, evt)
+				c.stopChildWatch(path)
 				return
 			}
 
 			log.Debug("%s#%d got event %+v", path, loops, evt)
 
 			if evt.Err != nil {
-				log.Error("%s#%d", path, loops)
+				log.Error("%s#%d unexpected err %s", path, loops, evt.Err)
 				c.fireListenerError(path, evt.Err)
 				continue
 			}
@@ -238,6 +265,12 @@ func (c *Client) SubscribeDataChanges(path string, listener ZkDataListener) {
 	}
 }
 
+func (c *Client) stopDataWatch(path string) {
+	c.dataLock.Lock()
+	delete(c.dataChangeListeners, path)
+	c.dataLock.Unlock()
+}
+
 func (c *Client) watchDataChanges(path string) {
 	defer c.wg.Done()
 
@@ -258,9 +291,11 @@ func (c *Client) watchDataChanges(path string) {
 		select {
 		case <-c.close:
 			log.Debug("%s#%d yes sir, quit", path, loops)
+			c.stopDataWatch(path)
 			return
 		case <-stopper:
 			log.Debug("%s#%d yes sir, stopped", path, loops)
+			c.stopDataWatch(path)
 			return
 		default:
 		}
@@ -269,12 +304,12 @@ func (c *Client) watchDataChanges(path string) {
 		if err != nil {
 			switch err {
 			case zk.ErrNoNode:
-				// sleep blindly
 				log.Trace("%s#%d %s, will retry", path, loops, err)
-				time.Sleep(time.Millisecond * 100)
+				time.Sleep(blindBackoff)
 
 			case zk.ErrClosing:
 				log.Trace("%s#%d zk closing", path, loops)
+				c.stopDataWatch(path)
 				return
 
 			default:
@@ -289,32 +324,44 @@ func (c *Client) watchDataChanges(path string) {
 		select {
 		case <-c.close:
 			log.Debug("%s#%d yes sir, quit", path, loops)
+			c.stopDataWatch(path)
 			return
 
 		case <-stopper:
 			log.Debug("%s#%d yes sir, stopped", path, loops)
+			c.stopDataWatch(path)
 			return
 
 		case evt, ok := <-evtCh:
 			if !ok {
 				log.Warn("%s#%d event channel closed, quit", path, loops)
+				c.stopDataWatch(path)
 				return
 			}
 
+			if evt.Err == zk.ErrSessionExpired || evt.State == zk.StateDisconnected {
+				// e,g.
+				// {Type:EventNotWatching State:StateDisconnected Path:/foobar Err:zk: session has been expired by the server}
+				log.Trace("%s#%d stop watching for %+v", path, loops, evt)
+				c.stopDataWatch(path)
+				return
+			}
+
+			log.Debug("%s#%d got event %+v", path, loops, evt)
+
 			if evt.Err != nil {
-				log.Error("%s#%d", path, loops)
+				log.Error("%s#%d unexpected err %s", path, loops, evt.Err)
 				c.fireListenerError(path, evt.Err)
 				continue
 			}
+
 			if evt.Type != zk.EventNodeDataChanged && evt.Type != zk.EventNodeDeleted {
 				// ignore
 				log.Debug("%s#%d ignored %+v", path, loops, evt)
 				continue
 			}
 
-			log.Debug("%s#%d got event %+v", path, loops, evt)
-
-			c.childLock.Lock()
+			c.dataLock.Lock()
 			for _, l := range c.dataChangeListeners[path] {
 				switch evt.Type {
 				case zk.EventNodeDataChanged:
@@ -328,7 +375,7 @@ func (c *Client) watchDataChanges(path string) {
 					}
 				}
 			}
-			c.childLock.Unlock()
+			c.dataLock.Unlock()
 		}
 	}
 
@@ -347,10 +394,16 @@ func (c *Client) UnsubscribeDataChanges(path string, listener ZkDataListener) {
 			found = true
 		}
 	}
-	if found && len(newListeners) == 0 {
-		close(c.dataWatchStopper[path])
+
+	if !found {
+		return
 	}
+
 	c.dataChangeListeners[path] = newListeners
+	if len(newListeners) == 0 {
+		close(c.dataWatchStopper[path]) // GC the watcher goroutine
+		delete(c.dataChangeListeners, path)
+	}
 }
 
 func (c *Client) fireListenerError(path string, err error) {
@@ -358,5 +411,6 @@ func (c *Client) fireListenerError(path string, err error) {
 	case c.lisenterErrCh <- ListenerError{Path: path, Err: err}:
 	default:
 		// discard silently
+		log.Warn("%s silently ignored %v", path, err)
 	}
 }

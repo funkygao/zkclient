@@ -6,6 +6,7 @@ import (
 	"github.com/funkygao/go-zookeeper/zk"
 )
 
+// Option is a func that can setup a Client's option.
 type Option func(*Client)
 
 func WithSessionTimeout(sessionTimeout time.Duration) Option {
