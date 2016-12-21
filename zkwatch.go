@@ -220,7 +220,7 @@ func (c *Client) watchChildChanges(path string) {
 			if evt.Err == zk.ErrSessionExpired || evt.State == zk.StateDisconnected {
 				// e,g.
 				// {Type:EventNotWatching State:StateDisconnected Path:/foobar Err:zk: session has been expired by the server}
-				log.Trace("%s#%d stop watching for %+v", path, loops, evt)
+				log.Trace("%s#%d stop watching child for %+v", path, loops, evt)
 				c.stopChildWatch(path)
 				return
 			}
@@ -374,7 +374,7 @@ func (c *Client) watchDataChanges(path string) {
 			if evt.Err == zk.ErrSessionExpired || evt.State == zk.StateDisconnected {
 				// e,g.
 				// {Type:EventNotWatching State:StateDisconnected Path:/foobar Err:zk: session has been expired by the server}
-				log.Trace("%s#%d stop watching for %+v", path, loops, evt)
+				log.Trace("%s#%d stop watching data for %+v", path, loops, evt)
 				c.stopDataWatch(path)
 				return
 			}
