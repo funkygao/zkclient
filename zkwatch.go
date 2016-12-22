@@ -46,6 +46,8 @@ func (c *Client) watchStateChanges() {
 
 		case evt = <-c.stateEvtCh:
 			// TODO what if handler blocks?
+			log.Debug("state event %+v", evt)
+
 			c.stateLock.Lock()
 			for _, l := range c.stateChangeListeners {
 				if err = l.HandleStateChanged(evt.State); err != nil {
@@ -168,21 +170,21 @@ func (c *Client) watchChildChanges(path string) {
 		currentChilds, evtCh, err := c.ChildrenW(path)
 		if err != nil {
 			switch err {
-			case zk.ErrNoNode:
-				log.Debug("%s#%d %s, will retry after %s", path, loops, err, blindBackoff)
-				time.Sleep(blindBackoff)
-
 			case zk.ErrClosing:
 				log.Trace("%s#%d zk closing", path, loops)
 				c.stopChildWatch(path)
 				return
 
-			default:
-				log.Error("%s#%d %v", path, loops, err)
-			}
+			case zk.ErrNoNode:
+				log.Debug("%s#%d %s, will retry after %s", path, loops, err, blindBackoff)
+				time.Sleep(blindBackoff)
+				continue
 
-			c.fireListenerError(path, err)
-			continue
+			default:
+				log.Error("%s#%d %s", path, loops, err)
+				c.fireListenerError(path, err)
+				continue
+			}
 		}
 
 		if c.birthCry && !birthCry {
@@ -225,10 +227,10 @@ func (c *Client) watchChildChanges(path string) {
 				return
 			}
 
-			log.Debug("%s#%d got event %+v", path, loops, evt)
+			log.Debug("%s#%d child event %+v", path, loops, evt)
 
 			if evt.Err != nil {
-				log.Error("%s#%d unexpected err %s", path, loops, evt.Err)
+				log.Error("%s#%d unexpected event err %s", path, loops, evt.Err)
 				c.fireListenerError(path, evt.Err)
 				continue
 			}
@@ -326,6 +328,7 @@ func (c *Client) watchDataChanges(path string) {
 			case zk.ErrNoNode:
 				log.Debug("%s#%d %s, will retry after %s", path, loops, err, blindBackoff)
 				time.Sleep(blindBackoff)
+				continue
 
 			case zk.ErrClosing:
 				log.Trace("%s#%d zk closing", path, loops)
@@ -333,11 +336,10 @@ func (c *Client) watchDataChanges(path string) {
 				return
 
 			default:
-				log.Error("%s#%d %v", path, loops, err)
+				log.Error("%s#%d %s", path, loops, err)
+				c.fireListenerError(path, err)
+				continue
 			}
-
-			c.fireListenerError(path, err)
-			continue
 		}
 
 		if c.birthCry && !birthCry {
@@ -380,7 +382,7 @@ func (c *Client) watchDataChanges(path string) {
 				return
 			}
 
-			log.Debug("%s#%d got event %+v", path, loops, evt)
+			log.Debug("%s#%d data event %+v", path, loops, evt)
 
 			if evt.Err != nil {
 				log.Error("%s#%d unexpected err %s", path, loops, evt.Err)
