@@ -33,6 +33,7 @@ type Client struct {
 	wg            sync.WaitGroup
 
 	zkConn     *zk.Conn
+	logger     zk.Logger
 	stat       *zk.Stat // storage for the lastest zk query stat info FIXME
 	stateEvtCh <-chan zk.Event
 	acl        []zk.ACL
@@ -97,6 +98,10 @@ func (c *Client) Connect() error {
 		return err
 	}
 
+	if c.logger != nil {
+		zkConn.SetLogger(c.logger)
+	}
+
 	close(c.connectCalled)
 	c.close = make(chan struct{})
 	c.lisenterErrCh = make(chan ListenerError, 1<<8)
@@ -144,6 +149,13 @@ func (c *Client) Disconnect() {
 // ZkSvr returns the raw zookeeper servers connection string.
 func (c *Client) ZkSvr() string {
 	return c.zkSvr
+}
+
+func (c *Client) DiscardZkLogger() {
+	c.logger = discardLogger{}
+	if c.zkConn != nil {
+		c.zkConn.SetLogger(c.logger)
+	}
 }
 
 func (c *Client) SessionTimeout() time.Duration {
