@@ -18,7 +18,7 @@ func (c *Client) SubscribeStateChanges(listener ZkStateListener) {
 	ok := true
 	for _, l := range c.stateChangeListeners {
 		if l == listener {
-			log.Debug("duplicated state changes subscribe %p", listener)
+			log.Warn("duplicated state changes subscribe %p", listener)
 			ok = false
 			break
 		}
@@ -41,7 +41,7 @@ func (c *Client) watchStateChanges() {
 
 		select {
 		case <-c.close:
-			log.Debug("#%d got close signal, watchStateChanges quit", loops)
+			log.Trace("#%d got close signal, watchStateChanges quit", loops)
 			return
 
 		case evt = <-c.stateEvtCh:
@@ -49,7 +49,7 @@ func (c *Client) watchStateChanges() {
 			c.stateLock.Lock()
 			for _, l := range c.stateChangeListeners {
 				if err = l.HandleStateChanged(evt.State); err != nil {
-					log.Error("#%d %v", loops, err)
+					log.Error("HandleStateChanged#%d %v", loops, err)
 				}
 			}
 
@@ -58,7 +58,7 @@ func (c *Client) watchStateChanges() {
 				c.isConnected.Set(true)
 				for _, l := range c.stateChangeListeners {
 					if err = l.HandleNewSession(); err != nil {
-						log.Error("#%d %v", loops, err)
+						log.Error("HandleNewSession#%d %v", loops, err)
 					}
 				}
 			} else if evt.State != zk.StateUnknown {
@@ -82,7 +82,7 @@ func (c *Client) SubscribeChildChanges(path string, listener ZkChildListener) {
 	ok := true
 	for _, l := range c.childChangeListeners[path] {
 		if l == listener {
-			log.Debug("duplicated child changes subscribe: %s %p", path, listener)
+			log.Warn("duplicated child changes subscribe: %s %p", path, listener)
 			ok = false
 			break
 		}
@@ -152,11 +152,11 @@ func (c *Client) watchChildChanges(path string) {
 
 		select {
 		case <-c.close:
-			log.Debug("%s#%d yes sir, watchChildChanges quit", path, loops)
+			log.Trace("%s#%d yes sir! watchChildChanges quit", path, loops)
 			c.stopChildWatch(path)
 			return
 		case <-stopper:
-			log.Debug("%s#%d yes sir, watchChildChanges stopped", path, loops)
+			log.Trace("%s#%d yes sir! watchChildChanges stopped", path, loops)
 			c.stopChildWatch(path)
 			return
 		default:
@@ -169,7 +169,7 @@ func (c *Client) watchChildChanges(path string) {
 		if err != nil {
 			switch err {
 			case zk.ErrNoNode:
-				log.Trace("%s#%d %s, will retry after %s", path, loops, err, blindBackoff)
+				log.Debug("%s#%d %s, will retry after %s", path, loops, err, blindBackoff)
 				time.Sleep(blindBackoff)
 
 			case zk.ErrClosing:
@@ -201,18 +201,18 @@ func (c *Client) watchChildChanges(path string) {
 		log.Debug("%s#%d ok, waiting for child change event...", path, loops)
 		select {
 		case <-c.close:
-			log.Debug("%s#%d yes sir, watchChildChanges quit", path, loops)
+			log.Trace("%s#%d yes sir! watchChildChanges quit", path, loops)
 			c.stopChildWatch(path)
 			return
 
 		case <-stopper:
-			log.Debug("%s#%d yes sir, watchChildChanges stopped", path, loops)
+			log.Trace("%s#%d yes sir! watchChildChanges stopped", path, loops)
 			c.stopChildWatch(path)
 			return
 
 		case evt, ok := <-evtCh:
 			if !ok {
-				log.Warn("%s#%d event channel closed, watchChildChanges quit", path, loops)
+				log.Trace("%s#%d event channel closed, watchChildChanges quit", path, loops)
 				c.stopChildWatch(path)
 				return
 			}
@@ -232,6 +232,7 @@ func (c *Client) watchChildChanges(path string) {
 				c.fireListenerError(path, evt.Err)
 				continue
 			}
+
 			if evt.Type != zk.EventNodeChildrenChanged {
 				// ignore
 				log.Debug("%s#%d ignored %+v", path, loops, evt)
@@ -264,7 +265,7 @@ func (c *Client) SubscribeDataChanges(path string, listener ZkDataListener) {
 	ok := true
 	for _, l := range c.dataChangeListeners[path] {
 		if l == listener {
-			log.Debug("duplicated data changes subscribe: %s %p", path, listener)
+			log.Warn("duplicated data changes subscribe: %s %p", path, listener)
 			ok = false
 			break
 		}
@@ -309,11 +310,11 @@ func (c *Client) watchDataChanges(path string) {
 
 		select {
 		case <-c.close:
-			log.Debug("%s#%d yes sir, watchDataChanges quit", path, loops)
+			log.Trace("%s#%d yes sir! watchDataChanges quit", path, loops)
 			c.stopDataWatch(path)
 			return
 		case <-stopper:
-			log.Debug("%s#%d yes sir, watchDataChanges stopped", path, loops)
+			log.Trace("%s#%d yes sir! watchDataChanges stopped", path, loops)
 			c.stopDataWatch(path)
 			return
 		default:
@@ -323,7 +324,7 @@ func (c *Client) watchDataChanges(path string) {
 		if err != nil {
 			switch err {
 			case zk.ErrNoNode:
-				log.Trace("%s#%d %s, will retry after %s", path, loops, err, blindBackoff)
+				log.Debug("%s#%d %s, will retry after %s", path, loops, err, blindBackoff)
 				time.Sleep(blindBackoff)
 
 			case zk.ErrClosing:
@@ -355,18 +356,18 @@ func (c *Client) watchDataChanges(path string) {
 		log.Debug("%s#%d ok, waiting for data change event...", path, loops)
 		select {
 		case <-c.close:
-			log.Debug("%s#%d yes sir, watchDataChanges quit", path, loops)
+			log.Trace("%s#%d yes sir! watchDataChanges quit", path, loops)
 			c.stopDataWatch(path)
 			return
 
 		case <-stopper:
-			log.Debug("%s#%d yes sir, watchDataChanges stopped", path, loops)
+			log.Trace("%s#%d yes sir! watchDataChanges stopped", path, loops)
 			c.stopDataWatch(path)
 			return
 
 		case evt, ok := <-evtCh:
 			if !ok {
-				log.Warn("%s#%d event channel closed, watchDataChanges quit", path, loops)
+				log.Trace("%s#%d event channel closed, watchDataChanges quit", path, loops)
 				c.stopDataWatch(path)
 				return
 			}
