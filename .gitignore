@@ -31,5 +31,4 @@ _testmain.go
 *.out
 .DS_Store
 
-schema/
-apps/fedis/fedis
+bench/bench
