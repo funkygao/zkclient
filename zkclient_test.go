@@ -79,6 +79,20 @@ func TestRealPath(t *testing.T) {
 	assert.Equal(t, "/abc/efg/mm", c.realPath("/mm"))
 }
 
+func TestWalk(t *testing.T) {
+	c := New(testZkSvr)
+	c.SetSessionTimeout(time.Second * 41)
+	err := c.Connect()
+	assert.Equal(t, nil, err)
+	err = c.Walk("/", func(path string, stat *zk.Stat, err error) error {
+		t.Logf("%s %v", path, err)
+		return nil
+	})
+	assert.Equal(t, nil, err)
+
+	c.Disconnect()
+}
+
 func TestConnectionWaitUntil(t *testing.T) {
 	c := New(testZkSvr)
 	c.SetSessionTimeout(time.Second * 41)

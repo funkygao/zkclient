@@ -2,7 +2,7 @@ package zkclient
 
 import (
 	"fmt"
-	"path"
+	gopath "path"
 	"sort"
 	"strconv"
 	"strings"
@@ -226,6 +226,53 @@ func (c *Client) LisenterErrors() <-chan ListenerError {
 	return c.lisenterErrCh
 }
 
+// WalkFunc is the type of the function called for each znode visited by Walk.
+type WalkFunc func(path string, stat *zk.Stat, err error) error
+
+// Walk walks the znode tree rooted at root, calling walkFn for each znode
+// in the tree, including root.
+// All errors that arise visiting znode are filtered by walkFn.
+// The znodes are walked in lexical order, which makes the output deterministic
+// but means that for very large znode tree Walk can be inefficient.
+func (c *Client) Walk(root string, walkFn WalkFunc) error {
+	exists, stat, err := c.zkConn.Exists(c.realPath(root))
+	if err != nil {
+		return walkFn(root, nil, err)
+	}
+	if !exists {
+		return walkFn(root, nil, zk.ErrNoNode)
+	}
+
+	return c.walk(root, stat, walkFn)
+}
+
+func (c *Client) walk(path string, stat *zk.Stat, walkFn WalkFunc) error {
+	if err := walkFn(path, stat, nil); err != nil {
+		return err
+	}
+
+	children, err := c.Children(c.realPath(path))
+	if err != nil {
+		return walkFn(path, stat, err)
+	}
+
+	sort.Strings(children)
+	for _, child := range children {
+		childPath := gopath.Join(path, child)
+		_, childStat, err := c.zkConn.Exists(c.realPath(childPath))
+		if err != nil {
+			if e := walkFn(childPath, childStat, err); e != nil {
+				return e
+			}
+		} else if e := c.walk(childPath, childStat, walkFn); e != nil {
+			return e
+		}
+
+	}
+
+	return nil
+}
+
 func (c *Client) Exists(path string) (result bool, err error) {
 	if c.withRetry {
 		err = retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
@@ -312,12 +359,12 @@ func (c *Client) CreateEphemeral(path string, data []byte) error {
 	return err
 }
 
-func (c *Client) CreatePersistentRecord(p string, r Marshaller) error {
-	if err := c.ensurePathExists(c.realPath(path.Dir(p))); err != nil {
+func (c *Client) CreatePersistentRecord(path string, r Marshaller) error {
+	if err := c.ensurePathExists(c.realPath(gopath.Dir(path))); err != nil {
 		return err
 	}
 
-	return c.CreatePersistent(p, r.Marshal())
+	return c.CreatePersistent(path, r.Marshal())
 }
 
 func (c *Client) SetRecord(path string, r Marshaller) error {
@@ -369,7 +416,7 @@ func (c *Client) ChildrenValues(p string) (children []string, values [][]byte, e
 			values = make([][]byte, 0, len(children))
 			var data []byte
 			for _, child := range children {
-				if data, err = c.Get(c.realPath(path.Join(p, child))); err != nil {
+				if data, err = c.Get(c.realPath(gopath.Join(p, child))); err != nil {
 					return retry.RetryContinue, c.wrapZkError(p, err)
 				}
 
@@ -391,7 +438,7 @@ func (c *Client) ChildrenValues(p string) (children []string, values [][]byte, e
 			values = make([][]byte, 0, len(children))
 			var data []byte
 			for _, child := range children {
-				if data, err = c.Get(c.realPath(path.Join(p, child))); err != nil {
+				if data, err = c.Get(c.realPath(gopath.Join(p, child))); err != nil {
 					if err == zk.ErrNoNode {
 						// between Children() and Get() the znode might change: just get the latest znode
 						time.Sleep(blindBackoff)
@@ -472,7 +519,7 @@ func (c *Client) ensurePathExists(p string) error {
 		return nil
 	}
 
-	parent := path.Dir(p)
+	parent := gopath.Dir(p)
 	if exists, _, _ := c.zkConn.Exists(parent); !exists {
 		if err := c.ensurePathExists(parent); err != nil {
 			return err
