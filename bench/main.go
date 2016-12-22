@@ -14,13 +14,14 @@ import (
 
 var (
 	mode  string
+	zkSvr string
 	path  = "/_zkbench_"
 	loops = 2000
-	zkSvr = "localhost:2181"
 )
 
 func init() {
 	flag.StringVar(&mode, "m", "get", "benchmark get|set")
+	flag.StringVar(&zkSvr, "z", "localhost:2181", "zookeeper connection string")
 	flag.Parse()
 	glog.Disable()
 }
@@ -31,11 +32,7 @@ func main() {
 	stress.Flags.C1 = 1
 	log.SetOutput(os.Stdout)
 
-	zc := zkclient.New(zkSvr)
-	zc.DiscardZkLogger()
-	if err := zc.Connect(); err != nil {
-		panic(err)
-	}
+	zc := createZkClient()
 	defer zc.Disconnect()
 	if err := zc.CreatePersistent(path, nil); err != nil {
 		panic(err)
@@ -67,11 +64,7 @@ func main() {
 }
 
 func benchGet(seq int) {
-	zc := zkclient.New(zkSvr)
-	zc.DiscardZkLogger()
-	if err := zc.Connect(); err != nil {
-		panic(err)
-	}
+	zc := createZkClient()
 
 	for i := 0; i < loops; i++ {
 		_, err := zc.Get(path)
@@ -84,12 +77,7 @@ func benchGet(seq int) {
 }
 
 func benchSet(seq int) {
-	zc := zkclient.New(zkSvr)
-	zc.DiscardZkLogger()
-	if err := zc.Connect(); err != nil {
-		panic(err)
-	}
-
+	zc := createZkClient()
 	data := []byte(strings.Repeat("X", 100))
 	for i := 0; i < loops; i++ {
 		err := zc.Set(path, data)
@@ -99,4 +87,15 @@ func benchSet(seq int) {
 			stress.IncCounter("ok", 1)
 		}
 	}
+}
+
+func createZkClient() *zkclient.Client {
+	zc := zkclient.New(zkSvr)
+	zc.DiscardZkLogger()
+	if err := zc.Connect(); err != nil {
+		panic(err)
+	}
+
+	zc.WaitUntilConnected(0)
+	return zc
 }
