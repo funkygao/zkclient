@@ -346,8 +346,16 @@ func (c *Client) GetW(path string) (data []byte, events <-chan zk.Event, err err
 	return
 }
 
+// Set will set the znode path with data without regarding version.
+// If you care about atomic Set(CAS), use SetWithVersion.
 func (c *Client) Set(path string, data []byte) error {
-	_, err := c.zkConn.Set(c.realPath(path), data, c.stat.Version)
+	_, err := c.zkConn.Set(c.realPath(path), data, -1)
+	return err
+}
+
+// SetWithVersion is CAS version of Set.
+func (c *Client) SetWithVersion(path string, data []byte, version int32) error {
+	_, err := c.zkConn.Set(c.realPath(path), data, version)
 	return err
 }
 
