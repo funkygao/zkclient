@@ -46,7 +46,7 @@ func (c *Client) watchStateChanges() {
 
 		case evt = <-c.stateEvtCh:
 			// TODO what if handler blocks?
-			log.Debug("state event %+v", evt)
+			log.Debug("state event-> %+v", evt)
 
 			c.stateLock.Lock()
 			for _, l := range c.stateChangeListeners {
@@ -127,7 +127,7 @@ func (c *Client) UnsubscribeChildChanges(path string, listener ZkChildListener) 
 }
 
 func (c *Client) stopChildWatch(path string) {
-	c.childLock.Lock()
+	c.childLock.Lock() // FIXME will dead lock
 	delete(c.childChangeListeners, path)
 	c.childLock.Unlock()
 }
@@ -227,7 +227,7 @@ func (c *Client) watchChildChanges(path string) {
 				return
 			}
 
-			log.Debug("%s#%d child event %+v", path, loops, evt)
+			log.Debug("%s#%d child event-> %+v", path, loops, evt)
 
 			if evt.Err != nil {
 				log.Error("%s#%d unexpected event err %s", path, loops, evt.Err)
@@ -382,7 +382,7 @@ func (c *Client) watchDataChanges(path string) {
 				return
 			}
 
-			log.Debug("%s#%d data event %+v", path, loops, evt)
+			log.Debug("%s#%d data event-> %+v", path, loops, evt)
 
 			if evt.Err != nil {
 				log.Error("%s#%d unexpected err %s", path, loops, evt.Err)
