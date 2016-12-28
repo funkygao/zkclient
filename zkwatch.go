@@ -135,6 +135,7 @@ func (c *Client) stopChildWatch(path string) {
 func (c *Client) watchChildChanges(path string) {
 	defer c.wg.Done()
 
+	// TODO need this?
 	if err := c.WaitUntilConnected(0); err != nil {
 		log.Error("give up for %v", err)
 		return
@@ -396,7 +397,7 @@ func (c *Client) watchDataChanges(path string) {
 				continue
 			}
 
-			c.dataLock.Lock()
+			c.dataLock.Lock() // FIXME if HandleDataDeleted calls UnsubscribeDataChanges, dead lock
 			for _, l := range c.dataChangeListeners[path] {
 				switch evt.Type {
 				case zk.EventNodeDataChanged:
