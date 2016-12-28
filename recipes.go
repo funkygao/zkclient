@@ -54,7 +54,7 @@ func (c *Client) CreateLiveNode(path string, data []byte, maxRetry int) (err err
 	}
 
 	if err == nil {
-		log.Trace("%s[%s] #%d created live node", c.SessionID(), path, retry)
+		log.Trace("%s[%s] #%d created live node!", c.SessionID(), path, retry)
 	}
 
 	return
