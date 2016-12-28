@@ -23,7 +23,7 @@ type ZkStateListener interface {
 type ZkChildListener interface {
 
 	// HandleChildChange is called when the children of the given path changed.
-	HandleChildChange(parentPath string, currentChilds []string) error
+	HandleChildChange(parentPath string, lastChilds []string) error
 }
 
 // ZkDataListener can be registered through TODO for listening on zk data changes for a given path.
