@@ -45,9 +45,17 @@ func (c *Client) watchStateChanges() {
 			return
 
 		case evt = <-c.stateEvtCh:
-			// TODO what if handler blocks?
+			if evt.Path != "" {
+				// not state change event, same logic as in Java org.I0Itec.zkclient
+				// if Path not empty, it can be NodeDataChanged/NodeDeleted/NodeCreated/NodeChildrenChanged
+				//
+				// if evt.Type != zk.EventSession ?
+				continue
+			}
+
 			log.Debug("state event-> %+v", evt)
 
+			// TODO what if handler blocks?
 			c.stateLock.Lock()
 			for _, l := range c.stateChangeListeners {
 				if err = l.HandleStateChanged(evt.State); err != nil {
