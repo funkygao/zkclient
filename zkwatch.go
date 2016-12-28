@@ -127,7 +127,7 @@ func (c *Client) UnsubscribeChildChanges(path string, listener ZkChildListener) 
 }
 
 func (c *Client) stopChildWatch(path string) {
-	c.childLock.Lock() // FIXME will dead lock
+	c.childLock.Lock()
 	delete(c.childChangeListeners, path)
 	c.childLock.Unlock()
 }
@@ -191,14 +191,13 @@ func (c *Client) watchChildChanges(path string) {
 		if c.birthCry && !birthCry {
 			birthCry = true
 
-			c.childLock.Lock()
-			log.Debug("%s#%d birth cry to %d listeners", path, loops, len(c.childChangeListeners[path]))
-			for _, l := range c.childChangeListeners[path] {
+			listeners := c.cloneChildChangeListeners()
+			log.Debug("%s#%d birth cry to %d listeners", path, loops, len(listeners[path]))
+			for _, l := range listeners[path] {
 				if err = l.HandleChildChange(path, currentChilds); err != nil {
 					log.Error("%s#%d %+v %v", path, loops, currentChilds, err)
 				}
 			}
-			c.childLock.Unlock()
 		}
 
 		log.Debug("%s#%d ok, waiting for child change event...", path, loops)
@@ -242,17 +241,36 @@ func (c *Client) watchChildChanges(path string) {
 				continue
 			}
 
-			c.childLock.Lock()
-			log.Debug("%s#%d dispatching %+v to %d listeners", path, loops, currentChilds, len(c.childChangeListeners[path]))
-			for _, l := range c.childChangeListeners[path] {
+			listeners := c.cloneChildChangeListeners()
+			log.Debug("%s#%d dispatching %+v to %d listeners", path, loops, currentChilds, len(listeners[path]))
+			for _, l := range listeners[path] {
 				if err = l.HandleChildChange(path, currentChilds); err != nil {
 					log.Error("%s#%d %+v %v", path, loops, currentChilds, err)
 				}
 			}
-			c.childLock.Unlock()
 		}
 	}
 
+}
+
+func (c *Client) cloneChildChangeListeners() map[string][]ZkChildListener {
+	c.childLock.Lock()
+	listeners := make(map[string][]ZkChildListener, len(c.childChangeListeners))
+	for k, v := range c.childChangeListeners {
+		listeners[k] = v
+	}
+	c.childLock.Unlock()
+	return listeners
+}
+
+func (c *Client) cloneDataChangeListeners() map[string][]ZkDataListener {
+	c.dataLock.Lock()
+	listeners := make(map[string][]ZkDataListener, len(c.dataChangeListeners))
+	for k, v := range c.dataChangeListeners {
+		listeners[k] = v
+	}
+	c.dataLock.Unlock()
+	return listeners
 }
 
 func (c *Client) SubscribeDataChanges(path string, listener ZkDataListener) {
@@ -346,14 +364,13 @@ func (c *Client) watchDataChanges(path string) {
 		if c.birthCry && !birthCry {
 			birthCry = true
 
-			c.dataLock.Lock()
-			log.Debug("%s#%d birth cry to %d listeners", path, loops, len(c.dataChangeListeners[path]))
-			for _, l := range c.dataChangeListeners[path] {
+			listeners := c.cloneDataChangeListeners()
+			log.Debug("%s#%d birth cry to %d listeners", path, loops, len(listeners[path]))
+			for _, l := range listeners[path] {
 				if err = l.HandleDataChange(path, data); err != nil {
 					log.Error("%s#%d %v", path, loops, err)
 				}
 			}
-			c.dataLock.Unlock()
 		}
 
 		log.Debug("%s#%d ok, waiting for data change event...", path, loops)
@@ -397,8 +414,8 @@ func (c *Client) watchDataChanges(path string) {
 				continue
 			}
 
-			c.dataLock.Lock() // FIXME if HandleDataDeleted calls UnsubscribeDataChanges, dead lock
-			for _, l := range c.dataChangeListeners[path] {
+			listeners := c.cloneDataChangeListeners()
+			for _, l := range listeners[path] {
 				switch evt.Type {
 				case zk.EventNodeDataChanged:
 					if err = l.HandleDataChange(path, data); err != nil {
@@ -411,7 +428,6 @@ func (c *Client) watchDataChanges(path string) {
 					}
 				}
 			}
-			c.dataLock.Unlock()
 		}
 	}
 
