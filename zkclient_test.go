@@ -18,8 +18,11 @@ var (
 )
 
 func init() {
-	log.SetOutput(ioutil.Discard)
-	//glog.Disable()
+	if !testing.Verbose() {
+		log.SetOutput(ioutil.Discard)
+		glog.Disable()
+	}
+
 }
 
 var _ ZkStateListener = &dummyListener{}
