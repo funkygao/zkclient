@@ -53,7 +53,7 @@ func (c *Client) watchStateChanges() {
 				continue
 			}
 
-			log.Debug("state event-> %+v", evt)
+			log.Debug("#%d state event-> %+v", loops, evt)
 
 			// TODO what if handler blocks?
 			c.stateLock.Lock()
