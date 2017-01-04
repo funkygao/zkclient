@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/funkygao/go-zookeeper/zk"
+	"github.com/funkygao/golib/debug"
 	"github.com/funkygao/golib/sync2"
 	log "github.com/funkygao/log4go"
 	"github.com/yichen/retry"
@@ -18,8 +19,6 @@ import (
 // Client is the zookeeper connection wrapped on zk.Conn with the following features:
 // chroot, subscribe/unsubscribe, retry, ACL, create/delete recursively.
 type Client struct {
-	sync.RWMutex // FIXME
-
 	zkSvr, chroot     string
 	servers           []string
 	sessionTimeout    time.Duration
@@ -52,6 +51,9 @@ type Client struct {
 	dataLock            sync.RWMutex
 	dataChangeListeners map[string][]ZkDataListener
 	dataWatchStopper    map[string]chan struct{}
+
+	// Debug will turn on/off the debug mode.
+	Debug bool
 }
 
 var defaultSessionTimeout = time.Second * 30
@@ -78,6 +80,7 @@ func New(zkSvr string, options ...Option) *Client {
 		childWatchStopper:    map[string]chan struct{}{},
 		dataChangeListeners:  map[string][]ZkDataListener{},
 		dataWatchStopper:     map[string]chan struct{}{},
+		Debug:                false,
 	}
 	c.isConnected.Set(false)
 
@@ -220,7 +223,9 @@ func (c *Client) WaitUntilConnected(d time.Duration) (err error) {
 		}
 	}
 
-	log.Debug("WaitUntilConnected %s", time.Since(t1))
+	if c.Debug {
+		log.Debug("WaitUntilConnected %s %+v", time.Since(t1), debug.Callstack(2))
+	}
 	return
 }
 
