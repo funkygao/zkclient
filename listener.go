@@ -15,7 +15,7 @@ type ZkStateListener interface {
 	HandleNewSession() error
 }
 
-// ZkChildListener can be registered through TODO for listening on zk child changes for a given path.
+// ZkChildListener can be registered through for listening on zk child changes for a given path.
 //
 // Note: Also this listener re-subscribes it watch for the path on each zk event (zk watches are one-timers) is is not
 // guaranteed that events on the path are missing (see http://zookeeper.wiki.sourceforge.net/ZooKeeperWatches).
@@ -26,8 +26,8 @@ type ZkChildListener interface {
 	HandleChildChange(parentPath string, lastChilds []string) error
 }
 
-// ZkDataListener can be registered through TODO for listening on zk data changes for a given path.
+// ZkDataListener can be registered through for listening on zk data changes for a given path.
 type ZkDataListener interface {
-	HandleDataChange(dataPath string, data []byte) error
+	HandleDataChange(dataPath string, lastData []byte) error
 	HandleDataDeleted(dataPath string) error
 }
