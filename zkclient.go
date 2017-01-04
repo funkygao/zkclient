@@ -13,7 +13,7 @@ import (
 	"github.com/funkygao/golib/debug"
 	"github.com/funkygao/golib/sync2"
 	log "github.com/funkygao/log4go"
-	"github.com/yichen/retry"
+	"github.com/funkygao/zkclient/retry"
 )
 
 // Client is the zookeeper connection wrapped on zk.Conn with the following features:

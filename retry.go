@@ -3,7 +3,7 @@ package zkclient
 import (
 	"time"
 
-	"github.com/yichen/retry"
+	"github.com/funkygao/zkclient/retry"
 )
 
 var (
