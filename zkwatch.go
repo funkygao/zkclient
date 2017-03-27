@@ -12,6 +12,8 @@ const blindBackoff = time.Millisecond * 200
 // SubscribeStateChanges MUST be called before Connect as we don't want
 // to labor to handle the thread-safe issue.
 func (c *Client) SubscribeStateChanges(listener ZkStateListener) {
+	log.Trace("watching zookeeper session state changes")
+
 	c.stateLock.Lock()
 	defer c.stateLock.Unlock()
 
@@ -153,7 +155,7 @@ func (c *Client) watchChildChanges(path string) {
 	stopper := c.childWatchStopper[path]
 	c.childLock.RUnlock()
 
-	log.Trace("start watching %s child changes", path)
+	log.Trace("start watching child changes for %s", path)
 	var (
 		loops    int
 		birthCry = false
@@ -329,7 +331,7 @@ func (c *Client) watchDataChanges(path string) {
 	stopper := c.dataWatchStopper[path]
 	c.dataLock.RUnlock()
 
-	log.Trace("start watching %s data changes", path)
+	log.Trace("start watching data changes for %s", path)
 	var (
 		loops    int
 		birthCry = false
