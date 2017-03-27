@@ -368,6 +368,18 @@ func (c *Client) Create(path string, data []byte, flags int32, acl []zk.ACL) (st
 	return c.zkConn.Create(c.realPath(path), data, flags, acl)
 }
 
+func (c *Client) CreatePersistentIfNotPresent(path string, data []byte) error {
+	if err := c.CreatePersistent(path, data); err != nil && err != zk.ErrNodeExists {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Client) CreateEmptyPersistentIfNotPresent(path string) error {
+	return c.CreatePersistentIfNotPresent(path, []byte{})
+}
+
 func (c *Client) CreatePersistent(path string, data []byte) error {
 	if err := c.ensurePathExists(c.realPath(gopath.Dir(path))); err != nil {
 		return err
