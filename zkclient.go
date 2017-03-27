@@ -369,6 +369,10 @@ func (c *Client) Create(path string, data []byte, flags int32, acl []zk.ACL) (st
 }
 
 func (c *Client) CreatePersistent(path string, data []byte) error {
+	if err := c.ensurePathExists(c.realPath(gopath.Dir(path))); err != nil {
+		return err
+	}
+
 	flags := int32(0)
 	_, err := c.Create(path, data, flags, c.acl)
 	return err
@@ -379,6 +383,10 @@ func (c *Client) CreateEmptyPersistent(path string) error {
 }
 
 func (c *Client) CreateEphemeral(path string, data []byte) error {
+	if err := c.ensurePathExists(c.realPath(gopath.Dir(path))); err != nil {
+		return err
+	}
+
 	flags := int32(zk.FlagEphemeral)
 	_, err := c.Create(path, data, flags, c.acl)
 	return err
