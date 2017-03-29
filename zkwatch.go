@@ -12,7 +12,7 @@ const blindBackoff = time.Millisecond * 200
 // SubscribeStateChanges MUST be called before Connect as we don't want
 // to labor to handle the thread-safe issue.
 func (c *Client) SubscribeStateChanges(listener ZkStateListener) {
-	log.Trace("watching zookeeper session state changes")
+	log.Debug("watching zookeeper session state changes")
 
 	c.stateLock.Lock()
 	defer c.stateLock.Unlock()
@@ -43,7 +43,7 @@ func (c *Client) watchStateChanges() {
 
 		select {
 		case <-c.close:
-			log.Trace("#%d got close signal, watchStateChanges quit", loops)
+			log.Debug("#%d got close signal, watchStateChanges quit", loops)
 			return
 
 		case evt = <-c.stateEvtCh:
@@ -155,7 +155,7 @@ func (c *Client) watchChildChanges(path string) {
 	stopper := c.childWatchStopper[path]
 	c.childLock.RUnlock()
 
-	log.Trace("start watching child changes for %s", path)
+	log.Debug("start watching child changes for %s", path)
 	var (
 		loops    int
 		birthCry = false
@@ -165,11 +165,11 @@ func (c *Client) watchChildChanges(path string) {
 
 		select {
 		case <-c.close:
-			log.Trace("%s#%d yes sir! watchChildChanges quit", path, loops)
+			log.Debug("%s#%d yes sir! watchChildChanges quit", path, loops)
 			c.stopChildWatch(path)
 			return
 		case <-stopper:
-			log.Trace("%s#%d yes sir! watchChildChanges stopped", path, loops)
+			log.Debug("%s#%d yes sir! watchChildChanges stopped", path, loops)
 			c.stopChildWatch(path)
 			return
 		default:
@@ -182,7 +182,7 @@ func (c *Client) watchChildChanges(path string) {
 		if err != nil {
 			switch err {
 			case zk.ErrClosing:
-				log.Trace("%s#%d zk closing", path, loops)
+				log.Debug("%s#%d zk closing", path, loops)
 				c.stopChildWatch(path)
 				return
 
@@ -213,18 +213,18 @@ func (c *Client) watchChildChanges(path string) {
 		log.Debug("%s#%d ok, waiting for child change event...", path, loops)
 		select {
 		case <-c.close:
-			log.Trace("%s#%d yes sir! watchChildChanges quit", path, loops)
+			log.Debug("%s#%d yes sir! watchChildChanges quit", path, loops)
 			c.stopChildWatch(path)
 			return
 
 		case <-stopper:
-			log.Trace("%s#%d yes sir! watchChildChanges stopped", path, loops)
+			log.Debug("%s#%d yes sir! watchChildChanges stopped", path, loops)
 			c.stopChildWatch(path)
 			return
 
 		case evt, ok := <-evtCh:
 			if !ok {
-				log.Trace("%s#%d event channel closed, watchChildChanges quit", path, loops)
+				log.Debug("%s#%d event channel closed, watchChildChanges quit", path, loops)
 				c.stopChildWatch(path)
 				return
 			}
@@ -232,7 +232,7 @@ func (c *Client) watchChildChanges(path string) {
 			if evt.Err == zk.ErrSessionExpired || evt.State == zk.StateDisconnected {
 				// e,g.
 				// {Type:EventNotWatching State:StateDisconnected Path:/foobar Err:zk: session has been expired by the server}
-				log.Trace("%s#%d stop watching child for %+v", path, loops, evt)
+				log.Debug("%s#%d stop watching child for %+v", path, loops, evt)
 				c.stopChildWatch(path)
 				return
 			}
@@ -331,7 +331,7 @@ func (c *Client) watchDataChanges(path string) {
 	stopper := c.dataWatchStopper[path]
 	c.dataLock.RUnlock()
 
-	log.Trace("start watching data changes for %s", path)
+	log.Debug("start watching data changes for %s", path)
 	var (
 		loops    int
 		birthCry = false
@@ -341,11 +341,11 @@ func (c *Client) watchDataChanges(path string) {
 
 		select {
 		case <-c.close:
-			log.Trace("%s#%d yes sir! watchDataChanges quit", path, loops)
+			log.Debug("%s#%d yes sir! watchDataChanges quit", path, loops)
 			c.stopDataWatch(path)
 			return
 		case <-stopper:
-			log.Trace("%s#%d yes sir! watchDataChanges stopped", path, loops)
+			log.Debug("%s#%d yes sir! watchDataChanges stopped", path, loops)
 			c.stopDataWatch(path)
 			return
 		default:
@@ -360,7 +360,7 @@ func (c *Client) watchDataChanges(path string) {
 				continue
 
 			case zk.ErrClosing:
-				log.Trace("%s#%d zk closing", path, loops)
+				log.Debug("%s#%d zk closing", path, loops)
 				c.stopDataWatch(path)
 				return
 
@@ -386,18 +386,18 @@ func (c *Client) watchDataChanges(path string) {
 		log.Debug("%s#%d ok, waiting for data change event...", path, loops)
 		select {
 		case <-c.close:
-			log.Trace("%s#%d yes sir! watchDataChanges quit", path, loops)
+			log.Debug("%s#%d yes sir! watchDataChanges quit", path, loops)
 			c.stopDataWatch(path)
 			return
 
 		case <-stopper:
-			log.Trace("%s#%d yes sir! watchDataChanges stopped", path, loops)
+			log.Debug("%s#%d yes sir! watchDataChanges stopped", path, loops)
 			c.stopDataWatch(path)
 			return
 
 		case evt, ok := <-evtCh:
 			if !ok {
-				log.Trace("%s#%d event channel closed, watchDataChanges quit", path, loops)
+				log.Debug("%s#%d event channel closed, watchDataChanges quit", path, loops)
 				c.stopDataWatch(path)
 				return
 			}
@@ -405,7 +405,7 @@ func (c *Client) watchDataChanges(path string) {
 			if evt.Err == zk.ErrSessionExpired || evt.State == zk.StateDisconnected {
 				// e,g.
 				// {Type:EventNotWatching State:StateDisconnected Path:/foobar Err:zk: session has been expired by the server}
-				log.Trace("%s#%d stop watching data for %+v", path, loops, evt)
+				log.Debug("%s#%d stop watching data for %+v", path, loops, evt)
 				c.stopDataWatch(path)
 				return
 			}
