@@ -13,6 +13,7 @@ import (
 // CreateLiveNode handles https://issues.apache.org/jira/browse/ZOOKEEPER-1740.
 // An ephemeral node may still exist even after its corresponding session has
 // expired and CreateLiveNode solves this problem.
+// For example,  (session expire) -> (zk long fsync and hang) -> (znode removed)
 func (c *Client) CreateLiveNode(path string, data []byte, maxRetry int) (err error) {
 	log.Debug("%s[%s] creating live node...", c.SessionID(), path)
 
