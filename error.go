@@ -2,6 +2,8 @@ package zkclient
 
 import (
 	"fmt"
+
+	"github.com/funkygao/go-zookeeper/zk"
 )
 
 var (
@@ -20,4 +22,12 @@ type ListenerError struct {
 
 func (le ListenerError) Error() string {
 	return le.Err.Error()
+}
+
+func IsErrNodeExists(err error) bool {
+	return err == zk.ErrNodeExists
+}
+
+func IsErrNoNode(err error) bool {
+	return err == zk.ErrNoNode
 }

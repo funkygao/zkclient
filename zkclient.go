@@ -317,10 +317,18 @@ func (c *Client) ExistsAll(paths ...string) (bool, error) {
 	return true, nil
 }
 
-func (c *Client) GetMaybeNonExist(path string) (data []byte, err error) {
-	data, err = c.Get(path)
-	if err == zk.ErrNoNode {
-		err = nil
+func (c *Client) GetWithStat(path string) (data []byte, stat *zk.Stat, err error) {
+	if c.withRetry {
+		err = retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
+			data, stat, err = c.zkConn.Get(c.realPath(path))
+			if err != nil {
+				return retry.RetryContinue, c.wrapZkError(path, err)
+			}
+
+			return retry.RetryBreak, nil
+		})
+	} else {
+		data, stat, err = c.zkConn.Get(c.realPath(path))
 	}
 
 	return
@@ -368,9 +376,8 @@ func (c *Client) Set(path string, data []byte) error {
 }
 
 // SetWithVersion is CAS version of Set.
-func (c *Client) SetWithVersion(path string, data []byte, version int32) error {
-	_, err := c.zkConn.Set(c.realPath(path), data, version)
-	return err
+func (c *Client) SetWithVersion(path string, data []byte, version int32) (*zk.Stat, error) {
+	return c.zkConn.Set(c.realPath(path), data, version)
 }
 
 func (c *Client) Create(path string, data []byte, flags int32, acl []zk.ACL) (string, error) {
