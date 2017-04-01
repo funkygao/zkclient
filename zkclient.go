@@ -317,6 +317,15 @@ func (c *Client) ExistsAll(paths ...string) (bool, error) {
 	return true, nil
 }
 
+func (c *Client) GetMaybeNonExist(path string) (data []byte, err error) {
+	data, err = c.Get(path)
+	if err == zk.ErrNoNode {
+		err = nil
+	}
+
+	return
+}
+
 func (c *Client) Get(path string) (data []byte, err error) {
 	if c.withRetry {
 		err = retry.RetryWithBackoff(zkRetryOptions, func() (retry.RetryStatus, error) {
