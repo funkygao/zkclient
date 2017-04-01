@@ -31,3 +31,7 @@ func IsErrNodeExists(err error) bool {
 func IsErrNoNode(err error) bool {
 	return err == zk.ErrNoNode
 }
+
+func IsErrVersionConflict(err error) bool {
+	return err == zk.ErrBadVersion
+}
