@@ -152,7 +152,6 @@ func TestChrootChildrenValues(t *testing.T) {
 	root := "/TestChildrenValues" + now.Format("20060102150405")
 	defer func() {
 		c.DeleteTree(root)
-		fmt.Println("delete root=", root)
 		c.Disconnect()
 	}()
 
