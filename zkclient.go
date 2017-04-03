@@ -488,7 +488,6 @@ func (c *Client) ChildrenValues(p string) (children []string, values [][]byte, e
 		})
 	} else {
 		for retry := 0; retry < 3; retry++ {
-		RETRY:
 			children, c.stat, err = c.zkConn.Children(c.realPath(p))
 			if err != nil {
 				return
@@ -503,7 +502,7 @@ func (c *Client) ChildrenValues(p string) (children []string, values [][]byte, e
 					if err == zk.ErrNoNode {
 						// between Children() and Get() the znode might change: just get the latest znode
 						time.Sleep(blindBackoff)
-						goto RETRY
+						break // break inner loop, retry again
 					}
 
 					// unexpeced err
