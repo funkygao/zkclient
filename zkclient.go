@@ -477,7 +477,7 @@ func (c *Client) ChildrenValues(p string) (children []string, values [][]byte, e
 			values = make([][]byte, 0, len(children))
 			var data []byte
 			for _, child := range children {
-				if data, err = c.Get(c.realPath(gopath.Join(p, child))); err != nil {
+				if data, err = c.Get(gopath.Join(p, child)); err != nil {
 					return retry.RetryContinue, c.wrapZkError(p, err)
 				}
 
@@ -488,7 +488,6 @@ func (c *Client) ChildrenValues(p string) (children []string, values [][]byte, e
 		})
 	} else {
 		for retry := 0; retry < 3; retry++ {
-		RETRY:
 			children, c.stat, err = c.zkConn.Children(c.realPath(p))
 			if err != nil {
 				return
@@ -499,11 +498,11 @@ func (c *Client) ChildrenValues(p string) (children []string, values [][]byte, e
 			values = make([][]byte, 0, len(children))
 			var data []byte
 			for _, child := range children {
-				if data, err = c.Get(c.realPath(gopath.Join(p, child))); err != nil {
+				if data, err = c.Get(gopath.Join(p, child)); err != nil {
 					if err == zk.ErrNoNode {
 						// between Children() and Get() the znode might change: just get the latest znode
 						time.Sleep(blindBackoff)
-						goto RETRY
+						break // break inner loop, retry again
 					}
 
 					// unexpeced err

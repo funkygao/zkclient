@@ -14,7 +14,8 @@ import (
 )
 
 var (
-	testZkSvr = "localhost:2181"
+	testZkSvr  = "localhost:2181"
+	testZkSvr2 = "localhost:2181/chroot"
 )
 
 func init() {
@@ -118,6 +119,32 @@ func TestConnectionWaitUntil(t *testing.T) {
 func TestChildrenValues(t *testing.T) {
 	c := New(testZkSvr)
 	c.SetSessionTimeout(time.Second * 41)
+	err := c.Connect()
+	assert.Equal(t, nil, err)
+
+	now := time.Now()
+	root := "/TestChildrenValues" + now.Format("20060102150405")
+	defer func() {
+		c.DeleteTree(root)
+		c.Disconnect()
+	}()
+
+	data := []byte("hello world")
+	assert.Equal(t, nil, c.CreatePersistent(root, data))
+	assert.Equal(t, nil, c.CreatePersistent(path.Join(root, "a"), data))
+	assert.Equal(t, nil, c.CreatePersistent(path.Join(root, "b"), data))
+
+	chilren, values, err := c.ChildrenValues(root)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, data, values[1])
+	assert.Equal(t, 2, len(values))
+	t.Logf("%+v %+v", chilren, values)
+}
+
+func TestChrootChildrenValues(t *testing.T) {
+	c := New(testZkSvr2)
+	c.SetSessionTimeout(time.Second * 41)
+	c.withRetry = false
 	err := c.Connect()
 	assert.Equal(t, nil, err)
 
