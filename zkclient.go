@@ -107,7 +107,7 @@ func (c *Client) Connect() error {
 
 	close(c.connectCalled)
 	c.close = make(chan struct{})
-	c.lisenterErrCh = make(chan ListenerError, 1<<8)
+	c.lisenterErrCh = make(chan ListenerError, 10)
 	c.zkConn = zkConn
 	c.stateEvtCh = stateEvtCh
 
