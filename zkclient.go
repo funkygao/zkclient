@@ -1,11 +1,9 @@
 package zkclient
 
 import (
-	"fmt"
 	gopath "path"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -183,7 +181,7 @@ func (c *Client) realPath(path string) string {
 		return path
 	}
 
-	return strings.TrimRight(c.chroot+path, "/")
+	return gopath.Join(c.chroot, path)
 }
 
 // LastStat returns last read operation(Exists/Get/GetW/Children/ChildrenW) zk stat result.
@@ -302,6 +300,7 @@ func (c *Client) Exists(path string) (result bool, err error) {
 		})
 	} else {
 		result, c.stat, err = c.zkConn.Exists(c.realPath(path))
+		err = c.wrapZkError(path, err)
 	}
 
 	return
@@ -310,7 +309,7 @@ func (c *Client) Exists(path string) (result bool, err error) {
 func (c *Client) ExistsAll(paths ...string) (bool, error) {
 	for _, path := range paths {
 		if exists, err := c.Exists(path); err != nil || exists == false {
-			return exists, err
+			return exists, c.wrapZkError(path, err)
 		}
 	}
 
@@ -329,6 +328,7 @@ func (c *Client) GetWithStat(path string) (data []byte, stat *zk.Stat, err error
 		})
 	} else {
 		data, stat, err = c.zkConn.Get(c.realPath(path))
+		err = c.wrapZkError(path, err)
 	}
 
 	return
@@ -346,6 +346,7 @@ func (c *Client) Get(path string) (data []byte, err error) {
 		})
 	} else {
 		data, c.stat, err = c.zkConn.Get(c.realPath(path))
+		err = c.wrapZkError(path, err)
 	}
 
 	return
@@ -363,6 +364,7 @@ func (c *Client) GetW(path string) (data []byte, events <-chan zk.Event, err err
 		})
 	} else {
 		data, c.stat, events, err = c.zkConn.GetW(c.realPath(path))
+		err = c.wrapZkError(path, err)
 	}
 
 	return
@@ -372,20 +374,25 @@ func (c *Client) GetW(path string) (data []byte, events <-chan zk.Event, err err
 // If you care about atomic Set(CAS), use SetWithVersion.
 func (c *Client) Set(path string, data []byte) error {
 	_, err := c.zkConn.Set(c.realPath(path), data, -1)
+	err = c.wrapZkError(path, err)
 	return err
 }
 
 // SetWithVersion is CAS version of Set.
 func (c *Client) SetWithVersion(path string, data []byte, version int32) (*zk.Stat, error) {
-	return c.zkConn.Set(c.realPath(path), data, version)
+	stat, err := c.zkConn.Set(c.realPath(path), data, version)
+	err = c.wrapZkError(path, err)
+	return stat, err
 }
 
 func (c *Client) Create(path string, data []byte, flags int32, acl []zk.ACL) (string, error) {
-	return c.zkConn.Create(c.realPath(path), data, flags, acl)
+	p, err := c.zkConn.Create(path, data, flags, acl)
+	err = c.wrapZkError(path, err)
+	return p, err
 }
 
 func (c *Client) CreatePersistentIfNotPresent(path string, data []byte) error {
-	if err := c.CreatePersistent(path, data); err != nil && err != zk.ErrNodeExists {
+	if err := c.CreatePersistent(path, data); !c.isZkError(err, zk.ErrNodeExists) {
 		return err
 	}
 
@@ -398,12 +405,12 @@ func (c *Client) CreateEmptyPersistentIfNotPresent(path string) error {
 
 func (c *Client) CreatePersistent(path string, data []byte) error {
 	if err := c.ensurePathExists(c.realPath(gopath.Dir(path))); err != nil {
-		return err
+		return c.wrapZkError(path, err)
 	}
 
 	flags := int32(0)
 	_, err := c.Create(path, data, flags, c.acl)
-	return err
+	return c.wrapZkError(path, err)
 }
 
 func (c *Client) CreateEmptyPersistent(path string) error {
@@ -412,17 +419,17 @@ func (c *Client) CreateEmptyPersistent(path string) error {
 
 func (c *Client) CreateEphemeral(path string, data []byte) error {
 	if err := c.ensurePathExists(c.realPath(gopath.Dir(path))); err != nil {
-		return err
+		return c.wrapZkError(path, err)
 	}
 
 	flags := int32(zk.FlagEphemeral)
 	_, err := c.Create(path, data, flags, c.acl)
-	return err
+	return c.wrapZkError(path, err)
 }
 
 func (c *Client) CreatePersistentRecord(path string, r Marshaller) error {
 	if err := c.ensurePathExists(c.realPath(gopath.Dir(path))); err != nil {
-		return err
+		return c.wrapZkError(path, err)
 	}
 
 	return c.CreatePersistent(path, r.Marshal())
@@ -459,6 +466,7 @@ func (c *Client) Children(path string) (children []string, err error) {
 		})
 	} else {
 		children, c.stat, err = c.zkConn.Children(c.realPath(path))
+		err = c.wrapZkError(path, err)
 	}
 
 	return
@@ -490,6 +498,7 @@ func (c *Client) ChildrenValues(p string) (children []string, values [][]byte, e
 	RETRY:
 		children, c.stat, err = c.zkConn.Children(c.realPath(p))
 		if err != nil {
+			err = c.wrapZkError(p, err)
 			return
 		}
 
@@ -528,13 +537,15 @@ func (c *Client) ChildrenW(path string) (children []string, eventChan <-chan zk.
 		})
 	} else {
 		children, c.stat, eventChan, err = c.zkConn.ChildrenW(c.realPath(path))
+		err = c.wrapZkError(path, err)
 	}
 
 	return
 }
 
 func (c *Client) Delete(path string) error {
-	return c.zkConn.Delete(c.realPath(path), -1)
+	err := c.zkConn.Delete(c.realPath(path), -1)
+	return c.wrapZkError(path, err)
 }
 
 func (c *Client) DeleteTree(path string) error {
@@ -543,24 +554,24 @@ func (c *Client) DeleteTree(path string) error {
 
 func (c *Client) deleteTreeRealPath(path string) error {
 	if exists, _, err := c.zkConn.Exists(path); !exists || err != nil {
-		return err
+		return c.wrapZkError(path, err)
 	}
 
 	children, _, err := c.zkConn.Children(path)
 	if err != nil {
-		return err
+		return c.wrapZkError(path, err)
 	}
 
 	if len(children) == 0 {
 		err := c.zkConn.Delete(path, -1)
-		return err
+		return c.wrapZkError(path, err)
 	}
 
 	for _, child := range children {
 		p := path + "/" + child
 		e := c.deleteTreeRealPath(p)
 		if e != nil {
-			return e
+			return c.wrapZkError(path, e)
 		}
 	}
 
@@ -585,9 +596,25 @@ func (c *Client) ensurePathExists(p string) error {
 }
 
 func (c *Client) wrapZkError(path string, err error) error {
-	if !c.wrapErrorWithPath {
+	if err == nil || !c.wrapErrorWithPath {
 		return err
 	}
 
-	return fmt.Errorf("%s %v", c.realPath(path), err)
+	if _, wrapped := err.(wrappedError); wrapped {
+		return err
+	}
+
+	return wrappedError{path: path, err: err}
+}
+
+func (c *Client) isZkError(err, zkErr error) bool {
+	if err == nil || zkErr == nil {
+		return false
+	}
+
+	if e, ok := err.(wrappedError); ok {
+		return e.err == zkErr
+	}
+
+	return err == zkErr
 }

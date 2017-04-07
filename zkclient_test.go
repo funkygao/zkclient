@@ -81,6 +81,33 @@ func TestRealPath(t *testing.T) {
 	c := New(testZkSvr)
 	c.chroot = "/abc/efg"
 	assert.Equal(t, "/abc/efg/mm", c.realPath("/mm"))
+	assert.Equal(t, "/abc/efg/foo/bar", c.realPath("/foo/bar"))
+	assert.Equal(t, "/abc/efg/foo/bar", c.realPath("/foo/bar/"))
+	assert.Equal(t, "/abc/efg/foo/bar", c.realPath("foo/bar/"))
+}
+
+func TestWrapZkError(t *testing.T) {
+	c := New(testZkSvr)
+	assert.Equal(t, nil, c.wrapZkError("path", nil))
+	assert.Equal(t, zk.ErrNothing, c.wrapZkError("path", zk.ErrNothing))
+	c = New(testZkSvr, WithWrapErrorWithPath())
+	assert.Equal(t, nil, c.wrapZkError("/foo/bar", nil))
+	err := c.wrapZkError("/foo/bar", zk.ErrNodeExists)
+	assert.Equal(t, "/foo/bar zk: node already exists", err.Error())
+	lastErrInfo := err.Error()
+
+	// wrap for only 1 level
+	err = c.wrapZkError("/new/path/", err)
+	assert.Equal(t, lastErrInfo, err.Error())
+}
+
+func TestZkErrorCompare(t *testing.T) {
+	c := New(testZkSvr)
+	c.wrapErrorWithPath = false
+	assert.Equal(t, false, c.isZkError(nil, nil))
+	assert.Equal(t, true, c.isZkError(c.wrapZkError("path", zk.ErrNodeExists), zk.ErrNodeExists))
+	c.wrapErrorWithPath = true
+	assert.Equal(t, true, c.isZkError(c.wrapZkError("path", zk.ErrNodeExists), zk.ErrNodeExists))
 }
 
 func TestWalk(t *testing.T) {
