@@ -35,3 +35,12 @@ func IsErrNoNode(err error) bool {
 func IsErrVersionConflict(err error) bool {
 	return err == zk.ErrBadVersion
 }
+
+type wrappedError struct {
+	path string
+	err  error
+}
+
+func (err wrappedError) Error() string {
+	return fmt.Sprintf("%s %v", err.path, err.err)
+}
