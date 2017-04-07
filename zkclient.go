@@ -618,3 +618,15 @@ func (c *Client) isZkError(err, zkErr error) bool {
 
 	return err == zkErr
 }
+
+func (c *Client) rawError(err error) error {
+	if err == nil || !c.wrapErrorWithPath {
+		return err
+	}
+
+	if e, ok := err.(wrappedError); ok {
+		return e.err
+	}
+
+	return err
+}

@@ -12,6 +12,7 @@ Zookeeper Client in golang
 ### TODO
 
 - [X] TestConnectionEnsurePath DeleteTree not works
+- [ ] test wrapErrorWithPath
 - [ ] test chroot
 - [ ] logger option
 - [ ] lock

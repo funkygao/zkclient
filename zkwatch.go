@@ -180,7 +180,7 @@ func (c *Client) watchChildChanges(path string) {
 		// watches are used to find out about the latest change
 		currentChilds, evtCh, err := c.ChildrenW(path)
 		if err != nil {
-			switch err {
+			switch c.rawError(err) {
 			case zk.ErrClosing:
 				log.Debug("%s#%d zk closing", path, loops)
 				c.stopChildWatch(path)
@@ -353,7 +353,7 @@ func (c *Client) watchDataChanges(path string) {
 
 		data, evtCh, err := c.GetW(path)
 		if err != nil {
-			switch err {
+			switch c.rawError(err) {
 			case zk.ErrNoNode:
 				log.Debug("%s#%d %s, will retry after %s", path, loops, err, blindBackoff)
 				time.Sleep(blindBackoff)
