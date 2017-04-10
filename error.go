@@ -25,14 +25,23 @@ func (le ListenerError) Error() string {
 }
 
 func IsErrNodeExists(err error) bool {
+	if e, ok := err.(wrappedError); ok {
+		return e.err == zk.ErrNodeExists
+	}
 	return err == zk.ErrNodeExists
 }
 
 func IsErrNoNode(err error) bool {
+	if e, ok := err.(wrappedError); ok {
+		return e.err == zk.ErrNoNode
+	}
 	return err == zk.ErrNoNode
 }
 
 func IsErrVersionConflict(err error) bool {
+	if e, ok := err.(wrappedError); ok {
+		return e.err == zk.ErrBadVersion
+	}
 	return err == zk.ErrBadVersion
 }
 
