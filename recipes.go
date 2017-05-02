@@ -31,20 +31,20 @@ func (c *Client) CreateLiveNode(path string, data []byte, maxRetry int) (err err
 			break
 		} else if err == zk.ErrNodeExists {
 			if curData, stat, er := c.zkConn.Get(path); er == zk.ErrNoNode {
-				log.Debug("%s[%s] #%d live node is gone as we check it, retry creating live node",
+				log.Trace("%s[%s] #%d live node is gone as we check it, retry creating live node",
 					c.SessionID(), path, retry)
 				continue // needn't sleep backoff
 			} else {
 				curSessionID := strconv.FormatInt(stat.EphemeralOwner, 10)
 				if curSessionID == c.SessionID() {
 					if !bytes.Equal(curData, data) {
-						log.Debug("%s[%s] #%d overwrite data with same session id", c.SessionID(), path, retry)
+						log.Trace("%s[%s] #%d overwrite data with same session id", c.SessionID(), path, retry)
 						if err = c.Set(path, data); err != nil {
 							log.Error("%s[%s] #%d failed to overwrite %v", c.SessionID(), path, err, retry)
 						}
 					}
 				} else {
-					log.Debug("%s[%s] #%d await previous session expire...", c.SessionID(), path, retry)
+					log.Trace("%s[%s] #%d await previous session expire...", c.SessionID(), path, retry)
 				}
 			}
 		}
