@@ -152,6 +152,11 @@ func (c *Client) ZkSvr() string {
 	return c.zkSvr
 }
 
+// Auth will let zk client do auth to zk server with digest and raw user:passwd.
+func (c *Client) Auth(userColonPasswd string) error {
+	return c.zkConn.AddAuth("digest", []byte(userColonPasswd))
+}
+
 func (c *Client) DiscardZkLogger() {
 	c.logger = discardLogger{}
 	if c.zkConn != nil {
